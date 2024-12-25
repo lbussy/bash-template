@@ -3496,112 +3496,161 @@ set_time() {
 }
 
 # -----------------------------------------------------------------------------
-# @brief Execute a command and return its success or failure.
-# @details This function executes a given command, logs its status, and optionally
-#          prints status messages to the console depending on the value of `USE_CONSOLE`.
-#          It returns `true` for success or `false` for failure.
+# @brief Execute a new shell operation (departs this script).
+# @details Executes or simulates a shell command based on the DRY_RUN flag.
+#          Supports optional debugging to trace the execution process.
 #
-# @param $1 The name/message for the operation.
-# @param $2 The command/process to execute.
-# @param $3 [Optional] Debug flag. Pass "debug" to enable verbose output.
+# @param $1 Name of the operation or process (for reference in logs).
+# @param $2 The shell command to execute.
+# @param $3 Optional debug flag ("debug" to enable debug output).
 #
-# @global DRY_RUN If set to "true", simulates the command execution.
-# @global USE_CONSOLE If set to "false", suppresses console output.
+# @global FUNCNAME Used to fetch the current and caller function names.
+# @global BASH_LINENO Used to fetch the calling line number.
+# @global DRY_RUN When set, simulates command execution instead of running it.
 #
-# @return Returns 0 (true) if the command succeeds, or non-zero (false) if it fails.
+# @throws Exits with a non-zero status if the command execution fails.
+#
+# @return None.
 #
 # @example
-# exec_command "Update Package" "sudo apt-get update"
+# DRY_RUN=true exec_new_shell "ListFiles" "ls -l" "debug"
 # -----------------------------------------------------------------------------
-exec_command() {
-    # Debug setup
-    local debug="${3:-}"  # Optional debug flag, defaults to an empty string if not provided
+exec_new_shell() {
+    local exec_name="${1:-Unnamed Operation}"
+    local exec_process="${2:-true}"
+    local debug="${3:-}"
+
     local func_name="${FUNCNAME[0]}"
     local caller_name="${FUNCNAME[1]}"
     local caller_line="${BASH_LINENO[0]}"
-    # Print debug information if the flag is set
+
+    # Validate debug flag
+    if [[ -n "$debug" && "$debug" != "debug" ]]; then
+        warn "Invalid debug flag: '$debug'. Use 'debug' or leave blank."
+        debug=""
+    fi
+
+    # Debug information
     [[ "$debug" == "debug" ]] && printf "[DEBUG] Function '%s()' called by '%s()' at line %s.\n" "$func_name" "$caller_name" "$caller_line" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] exec_name: %s\n" "$exec_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] exec_process: %s\n" "$exec_process" >&2
 
-    # Input arguments
-    local result                    # To store the exit status of the command
-    local exec_name="$1"            # The name/message for the operation
-    local exec_process="$2"         # The command/process to execute
-    # Validate exec_process
-    if [[ -z "$exec_process" ]]; then
-        warn "No command provided to execute (exec_process is empty)." >&2
-        return 1
-    fi
-    # Use exec_process as exec_name if exec_name is blank
-    if [[ -z "$exec_name" ]]; then
-        exec_name="$exec_process"
+    # Simulate command execution if DRY_RUN is enabled
+    if [[ -n "$DRY_RUN" ]]; then
+        printf "[✔] Simulating: '%s'.\n" "$exec_process"
+        [[ "$debug" == "debug" ]] && printf "[DEBUG] Dry-run simulation complete: '%s'.\n" "$exec_process" >&2
+        exit_script
     fi
 
-    # Prefixes for logging
+    # Validate the command
+    if [[ "$exec_process" == "true" || "$exec_process" == "" ]]; then
+        printf "[✔] Running: '%s'.\n" "$exec_process"
+        [[ "$debug" == "debug" ]] && printf "[DEBUG] Executing command: '%s' in function '%s()' at line %s.\n" "$exec_process" "$func_name" "$caller_line" >&2
+        exec true
+    elif ! command -v "${exec_process%% *}" >/dev/null 2>&1; then
+        warn "'$exec_process' is not a valid command or executable."
+        [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %s.\n" "$func_name" "$caller_line" >&2
+        die 1 "Invalid command: '$exec_process'"
+    else
+        # Execute the actual command
+        printf "[✔] Running: '%s'.\n" "$exec_process"
+        [[ "$debug" == "debug" ]] && printf "[DEBUG] Executing command: '%s' in function '%s()' at line %s.\n" "$exec_process" "$func_name" "$caller_line" >&2
+        exec $exec_process || die 1 "Command '${exec_process}' failed"
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# @brief Executes a command in a separate Bash process.
+# @details This function manages the execution of a shell command, handling
+#          the display of status messages. It supports dry-run mode, where
+#          the command is simulated without execution. The function prints 
+#          success or failure messages and handles the removal of the "Running"
+#          line once the command finishes.
+#
+# @param exec_name The name of the command or task being executed.
+# @param exec_process The command string to be executed.
+# @param debug Optional flag to enable debug messages. Set to "debug" to enable.
+#
+# @return Returns 0 if the command was successful, non-zero otherwise.
+#
+# @note The function supports dry-run mode, controlled by the DRY_RUN variable.
+#       When DRY_RUN is true, the command is only simulated without actual execution.
+#
+# @example
+# exec_command "Test Command" "echo Hello World" "debug"
+# -----------------------------------------------------------------------------
+exec_command() {
+    local exec_name="$1"
+    local exec_process="$2"
+    local debug="${3:-}"
+
+    local func_name="${FUNCNAME[0]}"
+    local caller_name="${FUNCNAME[1]}"
+    local caller_line="${BASH_LINENO[0]}"
+
+    # Validate debug flag
+    if [[ -n "$debug" && "$debug" != "debug" ]]; then
+        warn "Invalid debug flag: '$debug'. Use 'debug' or leave blank."
+        debug=""
+    fi
+
+    # Debug information
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Function '%s()' called by '%s()' at line %s.\n" "$func_name" "$caller_name" "$caller_line" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] exec_name: %s\n" "$exec_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] exec_process: %s\n" "$exec_process" >&2
+
+    # Basic status prefixes
     local running_pre="Running"
     local complete_pre="Complete"
     local failed_pre="Failed"
-    if [[ "${DRY_RUN}" == "true" ]]; then
-        local dry=" (dry)"
-        running_pre+="$dry"
-        complete_pre+="$dry"
-        failed_pre+="$dry"
+
+    # If DRY_RUN is enabled, show that in the prefix
+    if [[ "$DRY_RUN" == "true" ]]; then
+        running_pre+=" (dry)"
+        complete_pre+=" (dry)"
+        failed_pre+=" (dry)"
     fi
     running_pre+=":"
     complete_pre+=":"
     failed_pre+=":"
 
-    # Log the running message to file
-    logI "$running_pre '$exec_name'."
+    # 1) Print ephemeral “Running” line
+    printf "%b[-]%b %s %s\n" "${FGGLD}" "${RESET}" "$running_pre" "$exec_name"
+    # Optionally ensure it shows up (especially if the command is super fast):
+    sleep 0.02
 
-    if [[ "${DRY_RUN}" == "true" ]] && [[ "$debug" == "debug" ]] ; then
-        printf "[DEBUG] DRY_RUN enabled. Simulated execution for: '%s'\n" "$exec_name" >&2
+    # 2) If DRY_RUN == "true", skip real exec
+    if [[ "$DRY_RUN" == "true" ]]; then
+        # Move up & clear ephemeral line
+        printf "%b%b" "$MOVE_UP" "$CLEAR_LINE"
+        printf "%b[✔]%b %s %s.\n" "${FGGRN}" "${RESET}" "$complete_pre" "$exec_name"
+        return 0
     fi
 
-    # Print to console if CONSOLE_STATE is true
-    if [[ "${CONSOLE_STATE}" == "true" ]]; then
-        printf "%b[-]%b\t%s %s.\n" "${FGGLD}${BOLD}" "$RESET" "$running_pre" "$exec_name"
-    fi
+    # 3) Actually run the command (stdout/stderr handling is up to you):
+    bash -c "$exec_process" &>/dev/null
+    local status=$?
 
-    # Simulate or execute the command
-    if [[ "${DRY_RUN}" == "true" ]]; then
-        sleep 1  # Simulate execution delay
-        result=0 # Simulate success
+    # 4) Move up & clear ephemeral “Running” line
+    printf "%b%b" "$MOVE_UP" "$CLEAR_LINE"
+
+    # 5) Print final success/fail
+    if [[ $status -eq 0 ]]; then
+        printf "%b[✔]%b %s %s.\n" "${FGGRN}" "${RESET}" "$complete_pre" "$exec_name"
     else
-        # Execute the task command and capture the result
-        eval "$exec_process" > /dev/null 2>&1
-        result=$?
-    fi
-
-    # Move the cursor up and clear the entire line if USE_CONSOLE is false
-    if [[ "${CONSOLE_STATE}" == "true" ]]; then
-        printf "%s" "$MOVE_UP"
-    fi
-
-    # Handle success or failure
-    if [[ "$result" -eq 0 ]]; then
-        # Success
-        if [[ "${CONSOLE_STATE}" == "true" ]]; then
-            printf "%b[✔]%b\t%s %s.\n" "${FGGRN}${BOLD}" "${RESET}" "$complete_pre" "$exec_name"
+        printf "%b[✘]%b %s %s.\n" "${FGRED}" "${RESET}" "$failed_pre" "$exec_name"
+        # If specifically “command not found” exit code:
+        if [[ $status -eq 127 ]]; then
+            warn "Command not found: $exec_process"
+        else
+            warn "Command failed with status $status: $exec_process"
         fi
-        logI "$complete_pre '$exec_name'."
-        [[ "$debug" == "debug" ]] && printf "[DEBUG] Command succeeded: '%s'\n" "$exec_name" >&2
-    else
-        # Failure
-        if [[ "${CONSOLE_STATE}" == "true" ]]; then
-            printf "%b[✘]%b\t%s %s (%s).\n" "${FGRED}${BOLD}" "${RESET}" "$failed_pre" "$exec_name" "$result"
-        fi
-        logE "$failed_pre '$exec_name'."
-        [[ "$debug" == "debug" ]] && printf "[DEBUG] Command failed: '%s' with exit code %d\n" "$exec_name" "$result" >&2
-    fi
-
-    if [[ "${DRY_RUN}" == "true" ]] && [[ "$debug" == "debug" ]] ; then
-        printf "[DEBUG] Simulated execution for '%s' returned (%d).\n" "$exec_name" $result >&2
     fi
 
     # Debug log: function exit
     [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
 
-    return "$result"
+    return $status
 }
 
 # -----------------------------------------------------------------------------
