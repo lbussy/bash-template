@@ -90,8 +90,8 @@ trap_error() {
 # -----------------------------------------------------------------------------
 # @var DRY_RUN
 # @brief Enables simulated execution of certain commands.
-# @details When set to `true`, commands are not actually executed but are 
-#          simulated to allow testing or validation without side effects. 
+# @details When set to `true`, commands are not actually executed but are
+#          simulated to allow testing or validation without side effects.
 #          If set to `false`, commands execute normally.
 #
 # @example
@@ -102,8 +102,8 @@ declare DRY_RUN="${DRY_RUN:-false}"  # Use existing value, or default to "false"
 # -----------------------------------------------------------------------------
 # @var THIS_SCRIPT
 # @brief The name of the script being executed.
-# @details This variable is initialized to the name of the script (e.g., 
-#          `install.sh`) if not already set. It dynamically defaults to the 
+# @details This variable is initialized to the name of the script (e.g.,
+#          `install.sh`) if not already set. It dynamically defaults to the
 #          basename of the executing script at runtime.
 #
 # @example
@@ -114,8 +114,8 @@ declare THIS_SCRIPT="${THIS_SCRIPT:-$(basename "$0")}"  # Default to the script'
 # -----------------------------------------------------------------------------
 # @var IS_PATH
 # @brief Indicates whether the script was executed from a `PATH` location.
-# @details This variable is initialized to `false` by default. During execution, 
-#          it is dynamically set to `true` if the script is determined to have 
+# @details This variable is initialized to `false` by default. During execution,
+#          it is dynamically set to `true` if the script is determined to have
 #          been executed from a directory listed in the `PATH` environment variable.
 #
 # @example
@@ -130,9 +130,9 @@ declare IS_PATH="${IS_PATH:-false}"  # Default to "false".
 # -----------------------------------------------------------------------------
 # @var IS_GITHUB_REPO
 # @brief Indicates whether the script resides in a GitHub repository or subdirectory.
-# @details This variable is initialized to `false` by default. During execution, it 
-#          is dynamically set to `true` if the script is detected to be within a 
-#          GitHub repository (i.e., if a `.git` directory exists in the directory 
+# @details This variable is initialized to `false` by default. During execution, it
+#          is dynamically set to `true` if the script is detected to be within a
+#          GitHub repository (i.e., if a `.git` directory exists in the directory
 #          hierarchy of the script's location).
 #
 # @example
@@ -147,19 +147,23 @@ declare IS_GITHUB_REPO="${IS_GITHUB_REPO:-false}"  # Default to "false".
 # -----------------------------------------------------------------------------
 # @brief Project metadata constants used throughout the script.
 # @details These variables provide metadata about the script, including ownership,
-#          versioning, and project details. They are initialized with default
-#          values or dynamically set during execution to reflect the project's
+#          versioning, project details, and GitHub URLs. They are initialized with
+#          default values or dynamically set during execution to reflect the project's
 #          context.
 #
 # @vars
 # - @var REPO_ORG The organization or owner of the repository (default: "lbussy").
-# - @var REPO_NAME The name of the repository (default: "bash-installer").
+# - @var REPO_NAME The name of the repository (default: "bash-template").
 # - @var GIT_BRCH The current Git branch name (default: "main").
 # - @var GIT_TAG The current Git tag (default: "0.0.1").
 # - @var SEM_VER The semantic version of the project (default: "0.0.1").
 # - @var LOCAL_SOURCE_DIR The local source directory path (default: unset).
 # - @var LOCAL_WWW_DIR The local web directory path (default: unset).
 # - @var LOCAL_SCRIPTS_DIR The local scripts directory path (default: unset).
+# - @var GIT_RAW The base URL for accessing raw GitHub content
+#                (default: "https://raw.githubusercontent.com/$REPO_ORG/$REPO_NAME").
+# - @var GIT_API The base URL for the GitHub API for this repository
+#                (default: "https://api.github.com/repos/$REPO_ORG/$REPO_NAME").
 #
 # @example
 # echo "Repository: $REPO_ORG/$REPO_NAME"
@@ -167,15 +171,19 @@ declare IS_GITHUB_REPO="${IS_GITHUB_REPO:-false}"  # Default to "false".
 # echo "Source Directory: ${LOCAL_SOURCE_DIR:-Not Set}"
 # echo "WWW Directory: ${LOCAL_WWW_DIR:-Not Set}"
 # echo "Scripts Directory: ${LOCAL_SCRIPTS_DIR:-Not Set}"
+# echo "Raw URL: $GIT_RAW"
+# echo "API URL: $GIT_API"
 # -----------------------------------------------------------------------------
 declare REPO_ORG="${REPO_ORG:-lbussy}"
-declare REPO_NAME="${REPO_NAME:-bash-installer}"
+declare REPO_NAME="${REPO_NAME:-bash-template}"
 declare GIT_BRCH="${GIT_BRCH:-main}"
 declare GIT_TAG="${GIT_TAG:-0.0.1}"
 declare SEM_VER="${GIT_TAG:-0.0.1}"
 declare LOCAL_SOURCE_DIR="${LOCAL_SOURCE_DIR:-}"
 declare LOCAL_WWW_DIR="${LOCAL_WWW_DIR:-}"
 declare LOCAL_SCRIPTS_DIR="${LOCAL_SCRIPTS_DIR:-}"
+declare GIT_RAW="${GIT_RAW:-"https://raw.githubusercontent.com/$REPO_ORG/$REPO_NAME"}"
+declare GIT_API="${GIT_API:-"https://api.github.com/repos/$REPO_ORG/$REPO_NAME"}"
 
 # -----------------------------------------------------------------------------
 # @var USE_CONSOLE
@@ -207,8 +215,8 @@ declare CONSOLE_STATE="${CONSOLE_STATE:-$USE_CONSOLE}"
 # @var TERSE
 # @brief Enables or disables terse logging mode.
 # @details When `TERSE` is set to `true`, log messages are minimal and optimized
-#          for automated environments where concise output is preferred. When 
-#          set to `false`, log messages are verbose, providing detailed 
+#          for automated environments where concise output is preferred. When
+#          set to `false`, log messages are verbose, providing detailed
 #          information suitable for debugging or manual intervention.
 #
 # @example
@@ -225,7 +233,7 @@ declare TERSE="${TERSE:-false}"  # Default to "false" (verbose logging).
 # @brief Indicates whether root privileges are required to run the script.
 # @details This variable determines if the script requires execution with root
 #          privileges. It defaults to `true`, meaning the script will enforce
-#          that it is run with `sudo` or as a root user. This behavior can be 
+#          that it is run with `sudo` or as a root user. This behavior can be
 #          overridden by setting the `REQUIRE_SUDO` environment variable to `false`.
 #
 # @default true
@@ -239,8 +247,8 @@ readonly REQUIRE_SUDO="${REQUIRE_SUDO:-true}"  # Default to "true" if not specif
 # @var REQUIRE_INTERNET
 # @type string
 # @brief Flag indicating if internet connectivity is required.
-# @details Controls whether the script should verify internet connectivity 
-#          during initialization. This variable can be overridden by setting 
+# @details Controls whether the script should verify internet connectivity
+#          during initialization. This variable can be overridden by setting
 #          the `REQUIRE_INTERNET` environment variable before running the script.
 #
 # @values
@@ -257,8 +265,8 @@ readonly REQUIRE_INTERNET="${REQUIRE_INTERNET:-true}"  # Default to "true" if no
 # -----------------------------------------------------------------------------
 # @var MIN_BASH_VERSION
 # @brief Specifies the minimum supported Bash version.
-# @details Defines the minimum Bash version required to execute the script. By 
-#          default, it is set to `4.0`. This value can be overridden by setting 
+# @details Defines the minimum Bash version required to execute the script. By
+#          default, it is set to `4.0`. This value can be overridden by setting
 #          the `MIN_BASH_VERSION` environment variable before running the script.
 #          To disable version checks entirely, set this variable to `"none"`.
 #
@@ -273,8 +281,8 @@ readonly MIN_BASH_VERSION="${MIN_BASH_VERSION:-4.0}"  # Default to "4.0" if not 
 # -----------------------------------------------------------------------------
 # @var MIN_OS
 # @brief Specifies the minimum supported OS version.
-# @details Defines the lowest OS version that the script supports. This value 
-#          should be updated as compatibility requirements evolve. It is used 
+# @details Defines the lowest OS version that the script supports. This value
+#          should be updated as compatibility requirements evolve. It is used
 #          to ensure the script is executed only on compatible systems.
 #
 # @default 11
@@ -291,7 +299,7 @@ readonly MIN_OS=11  # Minimum supported OS version.
 # @var MAX_OS
 # @brief Specifies the maximum supported OS version.
 # @details Defines the highest OS version that the script supports. If the script
-#          is executed on a system with an OS version higher than this value, 
+#          is executed on a system with an OS version higher than this value,
 #          it may not function as intended. Set this to `-1` to indicate no upper
 #          limit on supported OS versions.
 #
@@ -308,12 +316,12 @@ readonly MAX_OS=15  # Maximum supported OS version (use -1 for no upper limit).
 # -----------------------------------------------------------------------------
 # @var SUPPORTED_BITNESS
 # @brief Specifies the supported system bitness.
-# @details Defines the system architectures that the script supports. Acceptable 
+# @details Defines the system architectures that the script supports. Acceptable
 #          values are:
 #          - `"32"`: Only supports 32-bit systems.
 #          - `"64"`: Only supports 64-bit systems.
 #          - `"both"`: Supports both 32-bit and 64-bit systems.
-#          This variable ensures compatibility with the intended system architecture. 
+#          This variable ensures compatibility with the intended system architecture.
 #          It defaults to `"32"` if not explicitly set.
 #
 # @default "32"
@@ -329,8 +337,8 @@ readonly SUPPORTED_BITNESS="32"  # Supported bitness ("32", "64", or "both").
 # -----------------------------------------------------------------------------
 # @var SUPPORTED_MODELS
 # @brief Associative array of Raspberry Pi models and their support statuses.
-# @details This associative array maps Raspberry Pi model identifiers to their 
-#          corresponding support statuses. Each key is a pipe-delimited string 
+# @details This associative array maps Raspberry Pi model identifiers to their
+#          corresponding support statuses. Each key is a pipe-delimited string
 #          containing:
 #          - The model name (e.g., "Raspberry Pi 4 Model B").
 #          - A simplified identifier (e.g., "4-model-b").
@@ -376,14 +384,14 @@ readonly SUPPORTED_MODELS
 # -----------------------------------------------------------------------------
 # @var LOG_OUTPUT
 # @brief Controls where log messages are directed.
-# @details Specifies the logging destination(s) for the script's output. This 
+# @details Specifies the logging destination(s) for the script's output. This
 #          variable can be set to one of the following values:
 #          - `"file"`: Log messages are written only to a file.
 #          - `"console"`: Log messages are displayed only on the console.
 #          - `"both"`: Log messages are written to both the console and a file.
 #          - `unset`: Defaults to `"both"`.
 #
-#          This variable allows flexible logging behavior depending on the 
+#          This variable allows flexible logging behavior depending on the
 #          environment or use case.
 #
 # @default "both"
@@ -398,9 +406,9 @@ declare LOG_OUTPUT="${LOG_OUTPUT:-both}"  # Default to logging to both console a
 # -----------------------------------------------------------------------------
 # @var LOG_FILE
 # @brief Specifies the path to the log file.
-# @details Defines the file path where log messages are written when logging 
-#          to a file is enabled. If not explicitly set, this variable defaults 
-#          to blank, meaning no log file will be used unless a specific path 
+# @details Defines the file path where log messages are written when logging
+#          to a file is enabled. If not explicitly set, this variable defaults
+#          to blank, meaning no log file will be used unless a specific path
 #          is assigned at runtime or through an external environment variable.
 #
 # @default ""
@@ -413,8 +421,8 @@ declare LOG_FILE="${LOG_FILE:-}"  # Use the provided LOG_FILE or default to blan
 # -----------------------------------------------------------------------------
 # @var LOG_LEVEL
 # @brief Specifies the logging verbosity level.
-# @details Defines the verbosity level for logging messages. This variable 
-#          controls which messages are logged based on their severity. It 
+# @details Defines the verbosity level for logging messages. This variable
+#          controls which messages are logged based on their severity. It
 #          defaults to `"DEBUG"` if not set. Common log levels include:
 #          - `"DEBUG"`: Detailed messages for troubleshooting and development.
 #          - `"INFO"`: Informational messages about normal operations.
@@ -433,9 +441,9 @@ declare LOG_LEVEL="${LOG_LEVEL:-DEBUG}"  # Default log level is DEBUG if not set
 # @var DEPENDENCIES
 # @type array
 # @brief List of required external commands for the script.
-# @details This array defines the external commands that the script depends on 
-#          to function correctly. Each command in this list is checked for 
-#          availability at runtime. If a required command is missing, the script 
+# @details This array defines the external commands that the script depends on
+#          to function correctly. Each command in this list is checked for
+#          availability at runtime. If a required command is missing, the script
 #          may fail or display an error message.
 #
 #          Best practices:
@@ -444,8 +452,8 @@ declare LOG_LEVEL="${LOG_LEVEL:-DEBUG}"  # Default log level is DEBUG if not set
 #
 # @default
 # A predefined set of common system utilities:
-# - `"awk"`, `"grep"`, `"tput"`, `"cut"`, `"tr"`, `"getconf"`, `"cat"`, `"sed"`, 
-#   `"basename"`, `"getent"`, `"date"`, `"printf"`, `"whoami"`, `"touch"`, 
+# - `"awk"`, `"grep"`, `"tput"`, `"cut"`, `"tr"`, `"getconf"`, `"cat"`, `"sed"`,
+#   `"basename"`, `"getent"`, `"date"`, `"printf"`, `"whoami"`, `"touch"`,
 #   `"dpkg"`, `"git"`, `"dpkg-reconfigure"`, `"curl"`, `"wget"`, `"realpath"`.
 #
 # @note Update this list as needed to reflect the actual commands used in the script.
@@ -486,8 +494,8 @@ readonly DEPENDENCIES
 # @var ENV_VARS_BASE
 # @type array
 # @brief Base list of required environment variables.
-# @details Defines the core environment variables that the script relies on, 
-#          regardless of the runtime context. These variables must be set to 
+# @details Defines the core environment variables that the script relies on,
+#          regardless of the runtime context. These variables must be set to
 #          ensure the script functions correctly.
 #
 #          - `HOME`: Specifies the home directory of the current user.
@@ -510,10 +518,10 @@ declare -ar ENV_VARS_BASE=(
 # @var ENV_VARS
 # @type array
 # @brief Final list of required environment variables.
-# @details This array extends `ENV_VARS_BASE` to include additional variables 
-#          required under specific conditions. If the script requires root 
-#          privileges (`REQUIRE_SUDO=true`), the `SUDO_USER` variable is added 
-#          dynamically during runtime. Otherwise, it inherits only the base 
+# @details This array extends `ENV_VARS_BASE` to include additional variables
+#          required under specific conditions. If the script requires root
+#          privileges (`REQUIRE_SUDO=true`), the `SUDO_USER` variable is added
+#          dynamically during runtime. Otherwise, it inherits only the base
 #          environment variables.
 #
 #          - `SUDO_USER`: Identifies the user who invoked the script using `sudo`.
@@ -537,10 +545,10 @@ fi
 # -----------------------------------------------------------------------------
 # @var COLUMNS
 # @brief Terminal width in columns.
-# @details The `COLUMNS` variable represents the width of the terminal in 
-#          characters. It is used for formatting output to fit within the 
-#          terminal's width. If not already set by the environment, it defaults 
-#          to `80` columns. This value can be overridden externally by setting 
+# @details The `COLUMNS` variable represents the width of the terminal in
+#          characters. It is used for formatting output to fit within the
+#          terminal's width. If not already set by the environment, it defaults
+#          to `80` columns. This value can be overridden externally by setting
 #          the `COLUMNS` environment variable before running the script.
 #
 # @default 80
@@ -554,11 +562,11 @@ COLUMNS="${COLUMNS:-80}"  # Default to 80 columns if unset.
 # @var SYSTEM_READS
 # @type array
 # @brief List of critical system files to check.
-# @details Defines the absolute paths to system files that the script depends on 
-#          for its execution. These files must be present and readable to ensure 
+# @details Defines the absolute paths to system files that the script depends on
+#          for its execution. These files must be present and readable to ensure
 #          the script operates correctly. The following files are included:
 #          - `/etc/os-release`: Contains operating system identification data.
-#          - `/proc/device-tree/compatible`: Identifies hardware compatibility, 
+#          - `/proc/device-tree/compatible`: Identifies hardware compatibility,
 #            commonly used in embedded systems like Raspberry Pi.
 #
 # @example
@@ -579,9 +587,9 @@ readonly SYSTEM_READS
 # @var APT_PACKAGES
 # @type array
 # @brief List of required APT packages.
-# @details Defines the APT packages that the script depends on for its execution. 
-#          These packages should be available in the system's default package 
-#          repository. The script will check for their presence and attempt to 
+# @details Defines the APT packages that the script depends on for its execution.
+#          These packages should be available in the system's default package
+#          repository. The script will check for their presence and attempt to
 #          install any missing packages as needed.
 #
 #          Packages included:
@@ -605,8 +613,8 @@ readonly APT_PACKAGES=(
 # @var WARN_STACK_TRACE
 # @type string
 # @brief Flag to enable stack trace logging for warnings.
-# @details Controls whether stack traces are printed alongside warning messages. 
-#          This feature is particularly useful for debugging and tracking the 
+# @details Controls whether stack traces are printed alongside warning messages.
+#          This feature is particularly useful for debugging and tracking the
 #          script's execution path in complex workflows.
 #
 #          Possible values:
@@ -633,7 +641,7 @@ readonly WARN_STACK_TRACE="${WARN_STACK_TRACE:-false}"  # Default to false if no
 # @param $1 The number to pad (e.g., "7").
 # @param $2 (Optional) The width of the output (default is 4). If debug is provided here, it will be considered the debug flag.
 # @param $3 (Optional) The debug flag. Pass "debug" to enable debug output.
-# 
+#
 # @return The padded number with spaces as a string.
 # -----------------------------------------------------------------------------
 pad_with_spaces() {
@@ -644,7 +652,7 @@ pad_with_spaces() {
     local func_name="${FUNCNAME[0]}"
     local caller_name="${FUNCNAME[1]}"
     local caller_line="${BASH_LINENO[0]}"
- 
+
     # If the second parameter is "debug", adjust the arguments
     if [[ "$width" == "debug" ]]; then
         debug="$width"
@@ -770,11 +778,11 @@ stack_trace() {
 
 # -----------------------------------------------------------------------------
 # @brief Logs a warning or error message with optional details and a stack trace.
-# @details This function logs messages at the `WARNING` or `ERROR` level, with 
-#          support for an optional stack trace for warnings. It appends the error 
+# @details This function logs messages at the `WARNING` or `ERROR` level, with
+#          support for an optional stack trace for warnings. It appends the error
 #          level (numeric) and additional details to the log message if provided.
 #
-#          Stack traces are included for warnings if `WARN_STACK_TRACE` is set 
+#          Stack traces are included for warnings if `WARN_STACK_TRACE` is set
 #          to `true`. The function uses `BASH_LINENO` to identify the call stack.
 #
 # @param $1 [Optional] Numeric error level. Defaults to `0` if not provided.
@@ -876,8 +884,8 @@ die() {
 
 # -----------------------------------------------------------------------------
 # @brief Add a dot (`.`) at the beginning of a string if it's missing.
-# @details This function ensures the input string starts with a leading dot. 
-#          If the input string is empty, the function logs a warning and returns 
+# @details This function ensures the input string starts with a leading dot.
+#          If the input string is empty, the function logs a warning and returns
 #          an error code.
 #
 # @param $1 The input string to process.
@@ -909,8 +917,8 @@ add_dot() {
 
 # -----------------------------------------------------------------------------
 # @brief Remove a leading dot (`.`) from a string if present.
-# @details This function processes the input string and removes a leading dot 
-#          if it exists. If the input string is empty, the function logs an error 
+# @details This function processes the input string and removes a leading dot
+#          if it exists. If the input string is empty, the function logs an error
 #          and returns an error code.
 #
 # @param $1 The input string to process.
@@ -942,8 +950,8 @@ remove_dot() {
 
 # -----------------------------------------------------------------------------
 # @brief Add a trailing slash (`/`) to a string if it's missing.
-# @details This function ensures that the input string ends with a trailing slash. 
-#          If the input string is empty, the function logs an error and returns 
+# @details This function ensures that the input string ends with a trailing slash.
+#          If the input string is empty, the function logs an error and returns
 #          an error code.
 #
 # @param $1 The input string to process.
@@ -975,8 +983,8 @@ add_slash() {
 
 # -----------------------------------------------------------------------------
 # @brief Remove a trailing slash (`/`) from a string if present.
-# @details This function ensures that the input string does not end with a trailing 
-#          slash. If the input string is empty, the function logs an error and 
+# @details This function ensures that the input string does not end with a trailing
+#          slash. If the input string is empty, the function logs an error and
 #          returns an error code.
 #
 # @param $1 The input string to process.
@@ -1012,8 +1020,8 @@ remove_slash() {
 
 # -----------------------------------------------------------------------------
 # @brief Print the system information to the log.
-# @details Extracts and logs the system's name and version using information 
-#          from `/etc/os-release`. If the information cannot be extracted, logs 
+# @details Extracts and logs the system's name and version using information
+#          from `/etc/os-release`. If the information cannot be extracted, logs
 #          a warning message. Includes debug output when the `debug` argument is provided.
 #
 # @param $1 [Optional] Debug flag to enable detailed output (`debug`).
@@ -1061,9 +1069,9 @@ print_system() {
 # -----------------------------------------------------------------------------
 # @brief Print the script version and optionally log it.
 # @details This function displays the version of the script stored in the global
-#          variable `SEM_VER`. If called by `parse_args`, it uses `printf` to 
-#          display the version; otherwise, it logs the version using `logI`. 
-#          If the debug flag is set to "debug," additional debug information 
+#          variable `SEM_VER`. If called by `parse_args`, it uses `printf` to
+#          display the version; otherwise, it logs the version using `logI`.
+#          If the debug flag is set to "debug," additional debug information
 #          will be printed.
 #
 # @param $1 [Optional] Debug flag. Pass "debug" to enable debug output.
@@ -1102,7 +1110,7 @@ print_version() {
 # -----------------------------------------------------------------------------
 # @brief Print the system information to the log.
 # @details Extracts and logs the system's name and version using information
-#          from `/etc/os-release`. Includes debug output when the `debug` 
+#          from `/etc/os-release`. Includes debug output when the `debug`
 #          argument is provided.
 #
 # @param $1 [Optional] Debug flag to enable detailed output (debug).
@@ -1150,8 +1158,8 @@ print_system() {
 
 # -----------------------------------------------------------------------------
 # @brief Determine the script's execution context.
-# @details Identifies how the script was executed, returning one of the 
-#          predefined context codes. Handles errors gracefully and outputs 
+# @details Identifies how the script was executed, returning one of the
+#          predefined context codes. Handles errors gracefully and outputs
 #          additional debugging information when the "debug" argument is passed.
 #
 # Context Codes:
@@ -1163,10 +1171,10 @@ print_system() {
 #
 # @param $1 [Optional] Pass "debug" to enable verbose logging for debugging purposes.
 #
-# @throws Exits with an error if the script path cannot be resolved or 
+# @throws Exits with an error if the script path cannot be resolved or
 #         directory traversal exceeds the maximum depth.
 #
-# @return Returns a context code (described above) indicating the script's 
+# @return Returns a context code (described above) indicating the script's
 #         execution context.
 # -----------------------------------------------------------------------------
 determine_execution_context() {
@@ -1246,9 +1254,9 @@ determine_execution_context() {
 
 # -----------------------------------------------------------------------------
 # @brief Handle the execution context of the script.
-# @details Determines the script's execution context by invoking 
-#          `determine_execution_context` and sets global variables based on 
-#          the context. Outputs debug information if the "debug" argument is 
+# @details Determines the script's execution context by invoking
+#          `determine_execution_context` and sets global variables based on
+#          the context. Outputs debug information if the "debug" argument is
 #          passed. Provides safeguards for unknown or invalid context codes.
 #
 # @param $1 [Optional] Pass "debug" to enable verbose logging for debugging purposes.
@@ -1602,7 +1610,7 @@ check_sh_ver() {
         [[ "$debug" == "debug" ]] && printf "[DEBUG] Bash version check is disabled (MIN_BASH_VERSION='none').\n" >&2
     else
         [[ "$debug" == "debug" ]] && printf "[DEBUG] Minimum required Bash version is set to '%s'.\n" "$required_version" >&2
-        
+
         # Extract the major and minor version components from the required version
         local required_major="${required_version%%.*}"
         local required_minor="${required_version#*.}"
@@ -1612,7 +1620,7 @@ check_sh_ver() {
         [[ "$debug" == "debug" ]] && printf "[DEBUG] Current Bash version is %d.%d.\n" "${BASH_VERSINFO[0]}" "${BASH_VERSINFO[1]}" >&2
 
         # Compare the current Bash version with the required version
-        if (( BASH_VERSINFO[0] < required_major || 
+        if (( BASH_VERSINFO[0] < required_major ||
               (BASH_VERSINFO[0] == required_major && BASH_VERSINFO[1] < required_minor) )); then
             [[ "$debug" == "debug" ]] && printf "[DEBUG] Current Bash version does not meet the requirement.\n" >&2
             die 1 "This script requires Bash version $required_version or newer."
@@ -1625,7 +1633,7 @@ check_sh_ver() {
 
 # -----------------------------------------------------------------------------
 # @brief Check system bitness compatibility.
-# @details Validates whether the current system's bitness matches the supported 
+# @details Validates whether the current system's bitness matches the supported
 #          configuration. Outputs debug information if debug mode is enabled.
 #
 # @param $1 [Optional] "debug" to enable verbose output for the check.
@@ -1684,7 +1692,7 @@ check_bitness() {
 
 # -----------------------------------------------------------------------------
 # @brief Check Raspbian OS version compatibility.
-# @details This function ensures that the Raspbian version is within the supported 
+# @details This function ensures that the Raspbian version is within the supported
 #          range and logs an error if the compatibility check fails.
 #
 # @param $1 [Optional] "debug" to enable verbose output for this check.
@@ -1910,9 +1918,9 @@ validate_proxy() {
 
 # -----------------------------------------------------------------------------
 # @brief Check connectivity to a URL using a specified tool.
-# @details Attempts to connect to a given URL with `curl` or `wget` based on the 
-#          provided arguments. Ensures that the tool's availability is checked 
-#          and handles timeouts gracefully. Optionally prints debug information 
+# @details Attempts to connect to a given URL with `curl` or `wget` based on the
+#          provided arguments. Ensures that the tool's availability is checked
+#          and handles timeouts gracefully. Optionally prints debug information
 #          if the "debug" flag is set.
 #
 # @param $1 The URL to test.
@@ -2115,9 +2123,9 @@ print_log_entry() {
 # -----------------------------------------------------------------------------
 # @brief Generate a timestamp and line number for log entries.
 #
-# @details This function retrieves the current timestamp and the line number of 
-#          the calling script. If the optional debug flag is provided, it will 
-#          print debug information, including the function name, caller's name, 
+# @details This function retrieves the current timestamp and the line number of
+#          the calling script. If the optional debug flag is provided, it will
+#          print debug information, including the function name, caller's name,
 #          and the line number where the function was called.
 #
 # @param $1 [Optional] Debug flag. Pass "debug" to enable debug output.
@@ -2260,7 +2268,7 @@ log_message() {
 
 # -----------------------------------------------------------------------------
 # @brief Log a message with the specified severity level.
-# @details This function logs messages at the specified severity level and 
+# @details This function logs messages at the specified severity level and
 #          handles extended details and debug information if provided.
 #
 # @param $1 Severity level (e.g., DEBUG, INFO, WARNING, ERROR, CRITICAL).
@@ -2374,7 +2382,7 @@ logX() { log_message_with_severity "EXTENDED" "$1" "${2:-}" "${3:-}"; }
 # -----------------------------------------------------------------------------
 # @brief Ensure the log file exists and is writable, with fallback to `/tmp` if necessary.
 # @details This function validates the specified log file's directory to ensure it exists and is writable.
-#          If the directory is invalid or inaccessible, it attempts to create it. If all else fails, 
+#          If the directory is invalid or inaccessible, it attempts to create it. If all else fails,
 #          the log file is redirected to `/tmp`. A warning message is logged if fallback is used.
 #
 # @param $1 [Optional] Debug flag. Pass "debug" to enable debug output.
@@ -2420,6 +2428,13 @@ init_log() {
         if ! touch "$LOG_FILE" &>/dev/null; then
             logW "Cannot create log file: $LOG_FILE"
             log_dir="/tmp"
+        else
+            # Change ownership of the log file if possible
+            if [[ -n "${SUDO_USER:-}" && "${REQUIRE_SUDO:-true}" == "true" ]]; then
+                chown "$SUDO_USER:$SUDO_USER" "$LOG_FILE" &>/dev/null || logW "Failed to set ownership to SUDO_USER: $SUDO_USER"
+            else
+                chown "$(whoami):$(whoami)" "$LOG_FILE" &>/dev/null || logW "Failed to set ownership to current user: $(whoami)"
+            fi
         fi
     else
         log_dir="/tmp"
@@ -2689,7 +2704,7 @@ setup_log() {
     # Debug message for log properties initialization
     if [[ "$debug" == "debug" ]]; then
         printf "[DEBUG] Log properties initialized:\n" >&2
-        
+
         # Iterate through LOG_PROPERTIES to print each level with its color
         for level in "${!LOG_PROPERTIES[@]}"; do
             IFS="|" read -r custom_level color severity <<< "${LOG_PROPERTIES[$level]}"
@@ -3102,7 +3117,7 @@ get_num_commits() {
     commit_count=$(git rev-list --count "${tag}..HEAD" 2>/dev/null || echo 0)
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'m %d commits since tag %s.\n" "$commit_count" "$tag" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
 
     printf "%s\n" "$commit_count"
 }
@@ -3170,7 +3185,7 @@ get_dirty() {
     if [[ -n "${changes:-}" ]]; then
         printf "true\n"
     else
-        
+
         printf "false\n"
     fi
 
@@ -3462,12 +3477,12 @@ set_time() {
     while true; do
         read -rp "Is this correct? [y/N]: " yn < /dev/tty
         case "$yn" in
-            [Yy]*) 
+            [Yy]*)
                 logI "Timezone confirmed on $current_date"
                 [[ "$debug" == "debug" ]] && printf "[DEBUG] Timezone confirmed on: $current_date\n" >&2
                 break
                 ;;
-            [Nn]* | *) 
+            [Nn]* | *)
                 dpkg-reconfigure tzdata
                 logI "Timezone reconfigured on $current_date"
                 [[ "$debug" == "debug" ]] && printf "[DEBUG] Timezone reconfigured on: $current_date\n" >&2
@@ -3489,7 +3504,7 @@ set_time() {
 # @param $1 The name/message for the operation.
 # @param $2 The command/process to execute.
 # @param $3 [Optional] Debug flag. Pass "debug" to enable verbose output.
-# 
+#
 # @global DRY_RUN If set to "true", simulates the command execution.
 # @global USE_CONSOLE If set to "false", suppresses console output.
 #
@@ -3706,7 +3721,7 @@ finish_script() {
 # -----------------------------------------------------------------------------
 # @brief Exit the script gracefully.
 # @details Logs a provided exit message or uses a default message and exits with
-#          a status code of 0. If the debug flag is set to "debug," it outputs 
+#          a status code of 0. If the debug flag is set to "debug," it outputs
 #          additional debug information.
 #
 # @param $1 [Optional] Message to log before exiting. Defaults to "Exiting."
@@ -3825,11 +3840,12 @@ parse_args() {
     local func_name="${FUNCNAME[0]}"
     local caller_name="${FUNCNAME[1]}"
     local caller_line="${BASH_LINENO[0]}"
+    local debug=""
+
     # Check for the "debug" argument anywhere
     for arg in "$@"; do
         if [[ "$arg" == "debug" ]]; then
             debug="debug"
-            shift
             break
         fi
     done
@@ -3838,11 +3854,12 @@ parse_args() {
     [[ "$debug" == "debug" ]] && printf "[DEBUG] Function '%s()' called by '%s()' at line %s.\n" "$func_name" "$caller_name" "$caller_line" >&2
 
     # Process the arguments
-    for arg in "$@"; do
-        case "$arg" in
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
             --dry-run|-d)
                 DRY_RUN=true
                 [[ "$debug" == "debug" ]] && printf "[DEBUG] DRY_RUN set to 'true'\n" >&2
+                shift
                 ;;
             --version|-v)
                 print_version "$debug"
@@ -3853,39 +3870,55 @@ parse_args() {
                 exit 0
                 ;;
             --log-file|-f)
-                LOG_FILE=$(realpath -m "${filtered_args[1]}" 2>/dev/null)
-                [[ "$debug" == "debug" ]] && printf "[DEBUG] LOG_FILE set to '%s'\n" "$LOG_FILE" >&2
-                filtered_args=("${filtered_args[@]:1}") # Remove the processed value
+                if [[ -n "$2" && "$2" != -* ]]; then
+                    LOG_FILE=$(realpath -m "$2" 2>/dev/null)
+                    [[ "$debug" == "debug" ]] && printf "[DEBUG] LOG_FILE set to '%s'\n" "$LOG_FILE" >&2
+                    shift 2 # Shift past the option and its value
+                else
+                    printf "[ERROR] Option '%s' requires an argument.\n" "$1" >&2
+                    exit 1
+                fi
                 ;;
             --log-level|-l)
-                LOG_LEVEL="${filtered_args[1]}"
-                [[ "$debug" == "debug" ]] && printf "[DEBUG] LOG_LEVEL set to '%s'\n" "$LOG_LEVEL" >&2
-                filtered_args=("${filtered_args[@]:1}") # Remove the processed value
+                if [[ -n "$2" && "$2" != -* ]]; then
+                    LOG_LEVEL="$2"
+                    [[ "$debug" == "debug" ]] && printf "[DEBUG] LOG_LEVEL set to '%s'\n" "$LOG_LEVEL" >&2
+                    shift 2 # Shift past the option and its value
+                else
+                    printf "[ERROR] Option '%s' requires an argument.\n" "$1" >&2
+                    exit 1
+                fi
                 ;;
             --terse|-t)
                 TERSE="true"
                 [[ "$debug" == "debug" ]] && printf "[DEBUG] TERSE set to 'true'\n" >&2
+                shift
                 ;;
             --console|-c)
                 USE_CONSOLE="true"
                 [[ "$debug" == "debug" ]] && printf "[DEBUG] USE_CONSOLE set to 'true'\n" >&2
+                shift
                 ;;
             *)
-                printf "Unknown option: %s\n" "${filtered_args[0]}"
+                if [[ -n "${1-}" ]]; then
+                    printf "[ERROR] Unknown option: %s\n" "$1" >&2
+                else
+                    printf "[ERROR] No option provided.\n" >&2
+                fi
                 usage "$debug"
                 exit 1
                 ;;
         esac
-        filtered_args=("${filtered_args[@]:1}") # Shift the processed argument
     done
 
+    # Debug: Final parsed values
     if [[ "$debug" == "debug" ]]; then
         printf "[DEBUG] Final parsed values:\n" >&2
-        printf "\t- DRY_RUN='%s'\n\t- LOG_FILE='%s'\n\t- LOG_LEVEL='%s'\n\t- ERSE='%s'\n\t- USE_CONSOLE='%s'\n" \
+        printf "\t- DRY_RUN='%s'\n\t- LOG_FILE='%s'\n\t- LOG_LEVEL='%s'\n\t- TERSE='%s'\n\t- USE_CONSOLE='%s'\n" \
             "${DRY_RUN:-false}" "${LOG_FILE:-None}" "${LOG_LEVEL:-None}" "${TERSE:-false}" "${USE_CONSOLE:-false}" >&2
     fi
 
-    # Debug log: function exit
+    # Debug: Function exit
     [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
 }
 
@@ -3899,9 +3932,9 @@ parse_args() {
 
 # -----------------------------------------------------------------------------
 # @brief The main entry point for the script.
-# @details This function orchestrates the execution of the script by invoking 
-#          a series of functions to check the environment, validate dependencies, 
-#          and perform the main tasks. Debugging can be enabled by passing the 
+# @details This function orchestrates the execution of the script by invoking
+#          a series of functions to check the environment, validate dependencies,
+#          and perform the main tasks. Debugging can be enabled by passing the
 #          `debug` argument.
 #
 # @param $@ Command-line arguments. If `debug` is included, debug mode is enabled.
@@ -3964,7 +3997,7 @@ main() {
 
 # -----------------------------------------------------------------------------
 # @brief Entry point for the script execution.
-# @details Calls the `main` function with all passed command-line arguments. 
+# @details Calls the `main` function with all passed command-line arguments.
 #          Upon completion, exits with the status returned by `main`.
 #
 # @param $@ All command-line arguments passed to the script.
