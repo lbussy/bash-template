@@ -1014,6 +1014,19 @@ remove_slash() {
     printf "%s\n" "$input"
 }
 
+# -----------------------------------------------------------------------------
+# @brief Pauses execution and waits for user input to continue.
+# @details This function displays a message prompting the user to press any key
+#          to continue. It waits for a single key press, then resumes execution.
+#
+# @example
+# pause
+# -----------------------------------------------------------------------------
+pause() {
+    printf "Press any key to continue.\n"
+    read -n 1 -sr < /dev/tty || true
+}
+
 ############
 ### Print/Display Environment Functions
 ############
