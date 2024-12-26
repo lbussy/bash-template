@@ -3,6 +3,8 @@ set -uo pipefail # Setting -e is far too much work here
 IFS=$'\n\t'
 set +o noclobber
 
+# TODO:  Add git functions
+
 # -----------------------------------------------------------------------------
 # @file
 # @brief Comprehensive Bash script template with advanced functionality.
@@ -164,6 +166,8 @@ declare IS_GITHUB_REPO="${IS_GITHUB_REPO:-false}"  # Default to "false".
 #                (default: "https://raw.githubusercontent.com/$REPO_ORG/$REPO_NAME").
 # - @var GIT_API The base URL for the GitHub API for this repository
 #                (default: "https://api.github.com/repos/$REPO_ORG/$REPO_NAME").
+# - @var GIT_CLONE The clone URL for the GitHub repository
+#                (default: "https://api.github.com/repos/$REPO_ORG/$REPO_NAME").
 #
 # @example
 # echo "Repository: $REPO_ORG/$REPO_NAME"
@@ -184,6 +188,7 @@ declare LOCAL_WWW_DIR="${LOCAL_WWW_DIR:-}"
 declare LOCAL_SCRIPTS_DIR="${LOCAL_SCRIPTS_DIR:-}"
 declare GIT_RAW="${GIT_RAW:-"https://raw.githubusercontent.com/$REPO_ORG/$REPO_NAME"}"
 declare GIT_API="${GIT_API:-"https://api.github.com/repos/$REPO_ORG/$REPO_NAME"}"
+declare GIT_CLONE="${GIT_CLONE:-"https://github.com/$REPO_ORG/$REPO_NAME.git"}"
 
 # -----------------------------------------------------------------------------
 # @var USE_CONSOLE
@@ -676,7 +681,7 @@ pad_with_spaces() {
     number=$((10#$number))  # Forces the number to be interpreted as base-10
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 
     # Format the number with leading spaces and return it as a string
     printf "%${width}d\n" "$number"
@@ -1076,7 +1081,7 @@ print_system() {
     fi
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -1117,7 +1122,7 @@ print_version() {
     fi
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -1162,7 +1167,7 @@ print_system() {
     fi
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 ############
@@ -1391,7 +1396,7 @@ enforce_sudo() {
         fi
     fi
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 
     return 0
 }
@@ -1446,7 +1451,7 @@ validate_depends() {
     [[ "$debug" == "debug" ]] && printf "[DEBUG] All dependencies are present.\n" >&2
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -1498,7 +1503,7 @@ validate_sys_accs() {
     [[ "$debug" == "debug" ]] && printf "[DEBUG] All critical system files are accessible.\n" >&2
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -1550,7 +1555,7 @@ validate_env_vars() {
     [[ "$debug" == "debug" ]] && printf "[DEBUG] All required environment variables are set.\n" >&2
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -1586,7 +1591,7 @@ check_bash() {
     fi
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -1641,7 +1646,7 @@ check_sh_ver() {
     fi
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -1700,7 +1705,7 @@ check_bitness() {
     esac
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -1762,7 +1767,7 @@ check_release() {
     fi
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -1866,7 +1871,7 @@ check_arch() {
 
     [[ "$debug" == "debug" ]] && printf "[DEBUG] Model: '%s' (%s) is supported.\n" "$this_model" "$this_chip" >&2
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -1983,7 +1988,7 @@ check_url() {
     fi
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -2275,7 +2280,7 @@ log_message() {
     print_log_entry "$timestamp" "$custom_level" "$color" "$lineno" "$message" "$debug"
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
     return 0
 }
 
@@ -2350,7 +2355,7 @@ log_message_with_severity() {
     fi
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -2473,7 +2478,7 @@ init_log() {
     export LOG_FILE
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -2577,7 +2582,7 @@ init_colors() {
     readonly BGBLK BGRED BGGRN BGYLW BGBLU BGMAG BGCYN BGWHT BGRST
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -2630,7 +2635,7 @@ generate_separator() {
     esac
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -2729,7 +2734,7 @@ setup_log() {
     validate_log_level "$debug"
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -2779,7 +2784,7 @@ toggle_console_log() {
     esac
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 ############
@@ -2836,7 +2841,7 @@ get_repo_org() {
     fi
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 
     # Output the determined or fallback organization
     printf "%s\n" "$repo_org"
@@ -2887,7 +2892,7 @@ get_repo_name() {
     fi
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 
     # Output the determined or fallback repository name
     printf "%s\n" "$repo_name"
@@ -2941,7 +2946,7 @@ repo_to_title_case() {
     fi
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2    # Debug log: function exit
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2    # Debug log: function exit
 
     return "$retval"
 }
@@ -2999,7 +3004,7 @@ get_git_branch() {
     fi
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 
     # Output the determined or fallback branch name
     printf "%s\n" "$branch"
@@ -3049,7 +3054,7 @@ get_last_tag() {
     fi
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 
     # Output the tag
     printf "%s\n" "$tag"
@@ -3097,7 +3102,7 @@ is_sem_ver() {
     fi
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -3130,7 +3135,7 @@ get_num_commits() {
     commit_count=$(git rev-list --count "${tag}..HEAD" 2>/dev/null || echo 0)
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 
     printf "%s\n" "$commit_count"
 }
@@ -3165,7 +3170,7 @@ get_short_hash() {
     fi
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 
     printf "%s\n" "$short_hash"
 }
@@ -3209,7 +3214,7 @@ get_dirty() {
     fi
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -3368,7 +3373,7 @@ get_proj_params() {
     export LOCAL_WWW_DIR LOCAL_SCRIPTS_DIR GIT_RAW GIT_API
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # ############
@@ -3433,7 +3438,7 @@ start_script() {
     esac
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -3505,7 +3510,7 @@ set_time() {
     done
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -3558,16 +3563,16 @@ exec_new_shell() {
     # Validate the command
     if [[ "$exec_process" == "true" || "$exec_process" == "" ]]; then
         printf "[✔] Running: '%s'.\n" "$exec_process"
-        [[ "$debug" == "debug" ]] && printf "[DEBUG] Executing command: '%s' in function '%s()' at line %s.\n" "$exec_process" "$func_name" "$caller_line" >&2
+        [[ "$debug" == "debug" ]] && printf "[DEBUG] Executing command: '%s' in function '%s()' at line %s.\n" "$exec_process" "$func_name" ${LINENO} >&2
         exec true
     elif ! command -v "${exec_process%% *}" >/dev/null 2>&1; then
         warn "'$exec_process' is not a valid command or executable."
-        [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %s.\n" "$func_name" "$caller_line" >&2
+        [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %s.\n" "$func_name" ${LINENO} >&2
         die 1 "Invalid command: '$exec_process'"
     else
         # Execute the actual command
         printf "[✔] Running: '%s'.\n" "$exec_process"
-        [[ "$debug" == "debug" ]] && printf "[DEBUG] Executing command: '%s' in function '%s()' at line %s.\n" "$exec_process" "$func_name" "$caller_line" >&2
+        [[ "$debug" == "debug" ]] && printf "[DEBUG] Executing command: '%s' in function '%s()' at line %s.\n" "$exec_process" "$func_name" ${LINENO} >&2
         exec $exec_process || die 1 "Command '${exec_process}' failed"
     fi
 }
@@ -3661,7 +3666,7 @@ exec_command() {
     fi
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 
     return $status
 }
@@ -3736,7 +3741,7 @@ handle_apt_packages() {
     fi
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 
     return $error_count
 }
@@ -3777,7 +3782,7 @@ finish_script() {
     fi
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -3816,7 +3821,7 @@ exit_script() {
     printf "%s\n" "$message"  # Log the provided or default message
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 
     exit 0
 }
@@ -3875,7 +3880,7 @@ usage() {
     done
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
@@ -3981,7 +3986,7 @@ parse_args() {
     fi
 
     # Debug: Function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # ############
@@ -4054,7 +4059,7 @@ main() {
     finish_script "$debug"             # Finish the script with final instructions
 
     # Debug log: function exit
-    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()'.\n" "$func_name" >&2
+    [[ "$debug" == "debug" ]] && printf "[DEBUG] Exiting function '%s()' at line %d.\n" "$func_name" ${LINENO} >&2
 }
 
 # -----------------------------------------------------------------------------
