@@ -3,11 +3,6 @@ set -uo pipefail # Setting -e is far too much work here
 IFS=$'\n\t'
 set +o noclobber
 
-# TODO:
-#   - Add git functions
-#   - Add menu functions
-#   - Add git clone
-
 # -----------------------------------------------------------------------------
 # @file
 # @brief Comprehensive Bash script template with advanced functionality.
@@ -22,7 +17,7 @@ set +o noclobber
 # - Git repository context retrieval and semantic versioning utilities.
 #
 # @author Lee Bussy
-# @date December 213, 2024
+# @date December 21, 2024
 # @version 1.0.0
 #
 # @copyright
@@ -121,7 +116,7 @@ declare DRY_RUN="${DRY_RUN:-false}"  # Use existing value, or default to "false"
 declare IS_PATH="${IS_PATH:-false}"  # Default to "false".
 
 # -----------------------------------------------------------------------------
-# @var IS_GITHUB_REPO
+# @var IS_REPO
 # @brief Indicates whether the script resides in a GitHub repository or subdirectory.
 # @details This variable is initialized to `false` by default. During execution, it
 #          is dynamically set to `true` if the script is detected to be within a
@@ -129,13 +124,13 @@ declare IS_PATH="${IS_PATH:-false}"  # Default to "false".
 #          hierarchy of the script's location).
 #
 # @example
-# if [[ "$IS_GITHUB_REPO" == "true" ]]; then
+# if [[ "$IS_REPO" == "true" ]]; then
 #     echo "This script resides within a GitHub repository."
 # else
 #     echo "This script is not located within a GitHub repository."
 # fi
 # -----------------------------------------------------------------------------
-declare IS_GITHUB_REPO="${IS_GITHUB_REPO:-false}"  # Default to "false".
+declare IS_REPO="${IS_REPO:-false}"  # Default to "false".
 
 # -----------------------------------------------------------------------------
 # @brief Project metadata constants used throughout the script.
@@ -148,10 +143,10 @@ declare IS_GITHUB_REPO="${IS_GITHUB_REPO:-false}"  # Default to "false".
 # - @var FALLBACK_SCRIPT_NAME A last-chance name for the script.
 # - @var REPO_ORG The organization or owner of the repository (default: "lbussy").
 # - @var REPO_NAME The name of the repository (default: "bash-template").
-# - @var GIT_BRCH The current Git branch name (default: "main").
+# - @var REPO_BRANCH The current Git branch name (default: "main").
 # - @var GIT_TAG The current Git tag (default: "0.0.1").
 # - @var SEM_VER The semantic version of the project (default: "0.0.1").
-# - @var LOCAL_SOURCE_DIR The local source directory path (default: unset).
+# - @var LOCAL_REPO_DIR The local source directory path (default: unset).
 # - @var LOCAL_WWW_DIR The local web directory path (default: unset).
 # - @var LOCAL_SCRIPTS_DIR The local scripts directory path (default: unset).
 # - @var GIT_RAW The base URL for accessing raw GitHub content
@@ -163,8 +158,8 @@ declare IS_GITHUB_REPO="${IS_GITHUB_REPO:-false}"  # Default to "false".
 #
 # @example
 # echo "Repository: $REPO_ORG/$REPO_NAME"
-# echo "Branch: $GIT_BRCH, Tag: $GIT_TAG, Version: $SEM_VER"
-# echo "Source Directory: ${LOCAL_SOURCE_DIR:-Not Set}"
+# echo "Branch: $REPO_BRANCH, Tag: $GIT_TAG, Version: $SEM_VER"
+# echo "Source Directory: ${LOCAL_REPO_DIR:-Not Set}"
 # echo "WWW Directory: ${LOCAL_WWW_DIR:-Not Set}"
 # echo "Scripts Directory: ${LOCAL_SCRIPTS_DIR:-Not Set}"
 # echo "Raw URL: $GIT_RAW"
@@ -173,15 +168,32 @@ declare IS_GITHUB_REPO="${IS_GITHUB_REPO:-false}"  # Default to "false".
 declare FALLBACK_SCRIPT_NAME="${FALLBACK_SCRIPT_NAME:-template.sh}"
 declare REPO_ORG="${REPO_ORG:-lbussy}"
 declare REPO_NAME="${REPO_NAME:-bash-template}"
-declare GIT_BRCH="${GIT_BRCH:-main}"
+declare REPO_BRANCH="${REPO_BRANCH:-main}"
 declare GIT_TAG="${GIT_TAG:-0.0.1}"
 declare SEM_VER="${GIT_TAG:-0.0.1}"
-declare LOCAL_SOURCE_DIR="${LOCAL_SOURCE_DIR:-}"
+declare LOCAL_REPO_DIR="${LOCAL_REPO_DIR:-}"
 declare LOCAL_WWW_DIR="${LOCAL_WWW_DIR:-}"
 declare LOCAL_SCRIPTS_DIR="${LOCAL_SCRIPTS_DIR:-}"
 declare GIT_RAW="${GIT_RAW:-"https://raw.githubusercontent.com/$REPO_ORG/$REPO_NAME"}"
 declare GIT_API="${GIT_API:-"https://api.github.com/repos/$REPO_ORG/$REPO_NAME"}"
-declare GIT_CLONE="${GIT_CLONE:-"https://github.com/$REPO_ORG/$REPO_NAME.git"}"
+
+# -----------------------------------------------------------------------------
+# Declare Menu Variables
+# -----------------------------------------------------------------------------
+declare -A MENU_ITEMS       # Associative array of menu items
+declare -a MAIN_MENU        # Array defining the main menu screen
+declare -a SUB_MENU         # Array defining the sub-menu screen
+declare MENU_HEADER="${MENU_HEADER:-Menu}"  # Global menu header
+
+# -----------------------------------------------------------------------------
+# @var GIT_DIRS
+# @brief List of relevant directories for download.
+# @details This array contains the names of the directories within the GitHub
+#          repository that will be processed and downloaded. The directories
+#          include 'man', 'scripts', and 'conf'. These directories are used
+#          in the script to determine which content to fetch from the repository.
+# -----------------------------------------------------------------------------
+readonly GIT_DIRS=("man" "scripts" "conf")
 
 # -----------------------------------------------------------------------------
 # @var THIS_SCRIPT
@@ -198,6 +210,36 @@ declare THIS_SCRIPT="${THIS_SCRIPT:-$(basename "$0")}"  # Default to the script'
 if [[ -p /dev/stdin ]]; then
     THIS_SCRIPT="$FALLBACK_SCRIPT_NAME"
 fi
+
+
+# -----------------------------------------------------------------------------
+# @var USER_HOME
+# @brief Home directory of the current user.
+# @details This variable stores the home directory of the user executing the script.
+#          If the script is run with `sudo`, it uses the home directory of the
+#          `SUDO_USER`, otherwise, it defaults to the current user's home directory.
+# -----------------------------------------------------------------------------
+declare USER_HOME
+if [[ -n "${SUDO_USER-}" ]]; then
+    readonly USER_HOME=$(eval echo "~$SUDO_USER")
+else
+    readonly USER_HOME="$HOME"
+fi
+
+# -----------------------------------------------------------------------------
+# @var REAL_USER
+# @brief Actual user executing the script.
+# @details This variable stores the real user who is running the script. If the
+#          script is being executed with `sudo`, it will store the user who invoked
+#          `sudo` (i.e., the actual user), otherwise it stores the current user.
+# -----------------------------------------------------------------------------
+declare REAL_USER
+if [[ -n "${SUDO_USER-}" ]]; then
+    readonly REAL_USER="$SUDO_USER"
+else
+    readonly REAL_USER="$(whoami)"
+fi
+
 
 # -----------------------------------------------------------------------------
 # @var USE_CONSOLE
@@ -1900,35 +1942,35 @@ handle_execution_context() {
         0)
             THIS_SCRIPT="piped_script"
             USE_LOCAL=false
-            IS_GITHUB_REPO=false
+            IS_REPO=false
             IS_PATH=false
             print_debug "Execution context: Script was piped (e.g., 'curl url | sudo bash')." "$debug"
             ;;
         1)
             THIS_SCRIPT="piped_script"
             USE_LOCAL=false
-            IS_GITHUB_REPO=false
+            IS_REPO=false
             IS_PATH=false
             warn "Execution context: Script run with 'bash' in an unusual way."
             ;;
         2)
             THIS_SCRIPT=$(basename "$0")
             USE_LOCAL=true
-            IS_GITHUB_REPO=false
+            IS_REPO=false
             IS_PATH=false
             print_debug "Execution context: Script executed directly from $THIS_SCRIPT." "$debug"
             ;;
         3)
             THIS_SCRIPT=$(basename "$0")
             USE_LOCAL=true
-            IS_GITHUB_REPO=true
+            IS_REPO=true
             IS_PATH=false
             print_debug "Execution context: Script is within a GitHub repository."\n" >&2" "$debug"
             ;;
         4)
             THIS_SCRIPT=$(basename "$0")
             USE_LOCAL=true
-            IS_GITHUB_REPO=false
+            IS_REPO=false
             IS_PATH=true
             print_debug "Execution context: Script executed from a PATH location ($(command -v "$THIS_SCRIPT"))" "$debug"
             ;;
@@ -2614,9 +2656,9 @@ check_internet() {
     return 1
 }
 
-# ############
-# ### Logging Functions
-# ############
+############
+### Logging Functions
+############
 
 # -----------------------------------------------------------------------------
 # @brief Log a message with optional details to the console and/or file.
@@ -3424,25 +3466,25 @@ repo_to_title_case() {
 }
 
 # -----------------------------------------------------------------------------
-# @brief Retrieve the current Git branch name or the branch this was detached from.
+# @brief Retrieve the current Repo branch name or the branch this was detached from.
 # @details Attempts to dynamically fetch the branch name from the current Git process.
-#          If not available, uses the global `$GIT_BRCH` if set. If neither is available,
+#          If not available, uses the global `$REPO_BRANCH` if set. If neither is available,
 #          returns "unknown". Provides debugging output when the "debug" argument
 #          is passed.
 #
 # @param $1 [Optional] Pass "debug" to enable verbose debugging output.
 #
-# @global GIT_BRCH If set, uses this as the current Git branch name.
+# @global REPO_BRANCH If set, uses this as the current Git branch name.
 #
 # @return Prints the branch name if available, otherwise "unknown".
 # @retval 0 Success: the branch name is printed.
 # @retval 1 Failure: prints an error message to standard error if the branch name cannot
 #           be determined.
 # -----------------------------------------------------------------------------
-get_git_branch() {
+get_repo_branch() {
     local debug=$(start_debug "$@") # Debug declarations, must be first line
 
-    local branch="${GIT_BRCH:-}"  # Use existing $GIT_BRCH if set
+    local branch="${REPO_BRANCH:-}"  # Use existing $REPO_BRANCH if set
     local detached_from
 
     # Attempt to retrieve branch name dynamically from Git
@@ -3686,7 +3728,7 @@ get_sem_ver() {
     fi
 
     # Append branch name
-    branch_name=$(get_git_branch "$debug")
+    branch_name=$(get_repo_branch "$debug")
     version_string="$version_string-$branch_name"
     print_debug "Appended branch name to version: $branch_name" "$debug"
 
@@ -3719,19 +3761,19 @@ get_sem_ver() {
 # @brief Configure local or remote mode based on the Git repository context.
 # @details Sets relevant variables for local mode if `USE_LOCAL` is `true` and
 #          the script is being executed from within a GitHub repository
-#          (`IS_GITHUB_REPO` is `true`). Defaults to remote configuration if not
+#          (`IS_REPO` is `true`). Defaults to remote configuration if not
 #          in local mode or when the combined check fails.
 #
 # @param $1 [Optional] Pass "debug" to enable verbose debugging output.
 #
 # @global USE_LOCAL           Indicates whether local mode is enabled.
-# @global IS_GITHUB_REPO      Indicates whether the script resides in a GitHub repository.
+# @global IS_REPO      Indicates whether the script resides in a GitHub repository.
 # @global THIS_SCRIPT         Name of the current script.
 # @global REPO_ORG            Git organization or owner name.
 # @global REPO_NAME           Git repository name.
-# @global GIT_BRCH            Current Git branch name.
+# @global REPO_BRANCH            Current Git branch name.
 # @global GIT_TAG             Generated semantic version string.
-# @global LOCAL_SOURCE_DIR    Path to the root of the local repository.
+# @global LOCAL_REPO_DIR    Path to the root of the local repository.
 # @global LOCAL_WWW_DIR       Path to the `data` directory in the repository.
 # @global LOCAL_SCRIPTS_DIR   Path to the `scripts` directory in the repository.
 # @global GIT_RAW             URL for accessing raw files remotely.
@@ -3744,7 +3786,7 @@ get_sem_ver() {
 get_proj_params() {
     local debug=$(start_debug "$@") # Debug declarations, must be first line
 
-    if [[ "$USE_LOCAL" == "true" && "$IS_GITHUB_REPO" == "true" ]]; then
+    if [[ "$USE_LOCAL" == "true" && "$IS_REPO" == "true" ]]; then
         print_debug "Configuring local mode with GitHub repository context." "$debug"
 
         # Making sure THIS_SCRIPT is right
@@ -3766,12 +3808,12 @@ get_proj_params() {
         fi
         print_debug "REPO_NAME set to: $REPO_NAME" "$debug"
 
-        GIT_BRCH=$(get_git_branch "${debug}")
+        REPO_BRANCH=$(get_repo_branch "${debug}")
         if [[ $? -ne 0 ]]; then
                     end_debug "$debug" # Next line must be a return/print/exit out of function
             die 1 "Failed to retrieve respository branch."
         fi
-        print_debug "GIT_BRCH set to: $GIT_BRCH" "$debug"
+        print_debug "REPO_BRANCH set to: $REPO_BRANCH" "$debug"
 
         GIT_TAG=$(get_last_tag "${debug}")
         if [[ $? -ne 0 ]]; then
@@ -3788,15 +3830,15 @@ get_proj_params() {
         print_debug "SEM_VER set to: $SEM_VER" "$debug"
 
         # Get the root directory of the repository
-        LOCAL_SOURCE_DIR=$(git rev-parse --show-toplevel 2>/dev/null)
-        if [[ -z "${LOCAL_SOURCE_DIR:-}" ]]; then
+        LOCAL_REPO_DIR=$(git rev-parse --show-toplevel 2>/dev/null)
+        if [[ -z "${LOCAL_REPO_DIR:-}" ]]; then
                     end_debug "$debug" # Next line must be a return/print/exit out of function`
             die 1 "Not inside a valid Git repository. Ensure the repository is properly initialized."
         fi
-        print_debug "LOCAL_SOURCE_DIR set to: $LOCAL_SOURCE_DIR" "$debug"
+        print_debug "LOCAL_REPO_DIR set to: $LOCAL_REPO_DIR" "$debug"
 
         # Set local script path based on repository structure
-        LOCAL_WWW_DIR="$LOCAL_SOURCE_DIR/data"
+        LOCAL_WWW_DIR="$LOCAL_REPO_DIR/data"
         if [[ -d "${LOCAL_WWW_DIR:-}" ]]; then
                     end_debug "$debug" # Next line must be a return/print/exit out of function`
             die 1 "HTML source directory does not exist."
@@ -3804,7 +3846,7 @@ get_proj_params() {
         print_debug "LOCAL_WWW_DIR set to: $LOCAL_WWW_DIR" "$debug"
 
         # Set local script path based on repository structure
-        LOCAL_SCRIPTS_DIR="$LOCAL_SOURCE_DIR/data"
+        LOCAL_SCRIPTS_DIR="$LOCAL_REPO_DIR/scripts"
         if [[ -d "${LOCAL_WWW_DIR:-}" ]]; then
                     end_debug "$debug" # Next line must be a return/print/exit out of function
             die 1 "Scripts source directory does not exist."
@@ -3828,16 +3870,181 @@ get_proj_params() {
     fi
 
     # Export global variables for further use
-    export THIS_SCRIPT REPO_ORG REPO_NAME GIT_BRCH GIT_TAG LOCAL_SOURCE_DIR
+    export THIS_SCRIPT REPO_ORG REPO_NAME REPO_BRANCH GIT_TAG LOCAL_REPO_DIR
     export LOCAL_WWW_DIR LOCAL_SCRIPTS_DIR GIT_RAW GIT_API
 
     end_debug "$debug" # Next line must be a return/print/exit out of function
     return 0
 }
 
-# ############
-# ### Install Functions
-# ############
+
+############
+### Git Functions
+############
+
+# -----------------------------------------------------------------------------
+# @brief Downloads a single file from a Git repository's raw URL.
+# @details Fetches a file from the raw content URL of the repository and saves
+#          it to the specified local directory. Ensures the destination
+#          directory exists before downloading.
+#
+# @param $1 The relative path of the file in the repository.
+# @param $2 The local destination directory where the file will be saved.
+#
+# @global GIT_RAW The base URL for raw content access in the Git repository.
+# @global REPO_BRANCH The branch name from which the file will be fetched.
+#
+# @throws Logs an error and returns non-zero if the file download fails.
+#
+# @return None. Downloads the file to the specified directory.
+#
+# @example
+# download_file "path/to/file.txt" "/local/dir"
+# -----------------------------------------------------------------------------
+download_file() {
+    local debug=$(start_debug "$@") # Debug declarations, must be first line
+    local file_path="$1"
+    local dest_dir="$2"
+
+    mkdir -p "$dest_dir"
+
+    local file_name
+    file_name=$(basename "$file_path")
+    file_name="${file_name//\'/}"
+
+    logI "Downloading from: $GIT_RAW/$REPO_BRANCH/$file_path to $dest_dir/$file_name"
+
+    wget -q -O "$dest_dir/$file_name" "$GIT_RAW/$REPO_BRANCH/$file_path" || {
+        warn "Failed to download file: $file_path to $dest_dir/$file_name"
+        return 1
+    }
+
+    local dest_file="$dest_dir/$file_name"
+    mv "$dest_file" "${dest_file//\'/}"
+    end_debug "$debug" # Next line must be a return/print/exit out of function
+    return
+}
+
+# -----------------------------------------------------------------------------
+# @brief Clones a GitHub repository to the specified local destination.
+# @details This function clones the repository from the provided Git URL to the
+#          specified local destination directory.
+#
+# @global GIT_CLONE The base URL for cloning the GitHub repository.
+# @global USER_HOME The home directory of the user, used as the base for storing files.
+# @global REPO_NAME The name of the repository to clone.
+#
+# @throws Logs an error and returns non-zero if the repository cloning fails.
+#
+# @return None. Clones the repository into the local destination.
+#
+# @example
+# git_clone
+# -----------------------------------------------------------------------------
+git_clone() {
+    local debug=$(start_debug "$@") # Debug declarations, must be first line
+    local dest_root="$USER_HOME/$REPO_NAME"
+    mkdir -p "$dest_root"
+
+    logI "Cloning repository from $GIT_CLONE to $dest_root"
+    git clone "$GIT_CLONE" "$dest_root" || {
+        warn "Failed to clone repository: $GIT_CLONE to $dest_root"
+        return 1
+    }
+
+    logI "Repository cloned successfully to $dest_root"
+    end_debug "$debug" # Next line must be a return/print/exit out of function
+    return
+}
+
+# -----------------------------------------------------------------------------
+# @brief Fetches the Git tree of a specified branch from a repository.
+# @details Retrieves the SHA of the specified branch and then fetches the
+#          complete tree structure of the repository, allowing recursive access
+#          to all files and directories.
+#
+# @global GIT_API The base URL for the GitHub API, pointing to the repository.
+# @global REPO_BRANCH The branch name to fetch the tree from.
+#
+# @throws Prints an error message and exits if the branch SHA cannot be fetched.
+#
+# @return Outputs the JSON representation of the repository tree.
+#
+# @example
+# fetch_tree
+# -----------------------------------------------------------------------------
+fetch_tree() {
+    local debug=$(start_debug "$@") # Debug declarations, must be first line
+    local branch_sha
+    branch_sha=$(curl -s "$GIT_API/git/ref/heads/$REPO_BRANCH" | jq -r '.object.sha')
+
+    if [[ -z "$branch_sha" || "$branch_sha" == "null" ]]; then
+        warn "Failed to fetch branch SHA for branch: $REPO_BRANCH. Check repository details or API access."
+        return 1
+    fi
+
+    curl -s "$GIT_API/git/trees/$branch_sha?recursive=1"
+    end_debug "$debug" # Next line must be a return/print/exit out of function
+    return
+}
+
+# -----------------------------------------------------------------------------
+# @brief Downloads files from specified directories in a repository.
+# @details This function retrieves a repository tree, identifies files within
+#          specified directories, and downloads them to the local system.
+#
+# @param $1 The target directory to update.
+#
+# @global USER_HOME The home directory of the user, used as the base for storing files.
+# @global GIT_DIRS Array of directories in the repository to process.
+#
+# @throws Exits the script with an error if the repository tree cannot be fetched.
+#
+# @return Downloads files to the specified directory structure under $USER_HOME/apppop.
+#
+# @example
+# download_files_in_directories
+# -----------------------------------------------------------------------------
+download_files_in_directories() {
+    local debug=$(start_debug "$@") # Debug declarations, must be first line
+    local dest_root="$USER_HOME/$REPO_NAME"
+    logI "Fetching repository tree."
+    local tree=$(fetch_tree)
+
+    if [[ $(printf "%s" "$tree" | jq '.tree | length') -eq 0 ]]; then
+        die 1 "Failed to fetch repository tree. Check repository details or ensure it is public."
+    fi
+
+    for dir in "${GIT_DIRS[@]}"; do
+        logI "Processing directory: $dir"
+
+        local files
+        files=$(printf "%s" "$tree" | jq -r --arg TARGET_DIR "$dir/" \
+            '.tree[] | select(.type=="blob" and (.path | startswith($TARGET_DIR))) | .path')
+
+        if [[ -z "$files" ]]; then
+            logI "No files found in directory: $dir"
+            continue
+        fi
+
+        local dest_dir="$dest_root/$dir"
+        mkdir -p "$dest_dir"
+
+        printf "%s\n" "$files" | while read -r file; do
+            logI "Downloading: $file"
+            download_file "$file" "$dest_dir"
+        done
+
+        logI "Files from $dir downloaded to: $dest_dir"
+    done
+
+    end_debug "$debug" # Next line must be a return/print/exit out of function
+    logI "Files saved in: $dest_root"
+}
+
+############
+### Common Install Functions
+############
 
 # -----------------------------------------------------------------------------
 # @brief Start the script, with optional timeout for non-interactive environments.
@@ -4254,9 +4461,243 @@ exit_script() {
     exit 0
 }
 
-# ############
-# ### Arguments Functions
-# ############
+############
+### Menu Functions Here
+############
+
+# -----------------------------------------------------------------------------
+# @var MENU_ITEMS
+# @brief Stores menu item details.
+# @details Keys are unique identifiers for menu items, and values are formatted
+#          strings containing display names and the corresponding function to call.
+# -----------------------------------------------------------------------------
+MENU_ITEMS["option_one"]="Option One"
+MENU_ITEMS["option_two"]="Option Two"
+MENU_ITEMS["option_three"]="Option Three"
+MENU_ITEMS["display_sub_menu"]="Display Sub Menu"
+MENU_ITEMS["display_main_menu"]="Display Main Menu"
+
+# -----------------------------------------------------------------------------
+# @var MAIN_MENU
+# @brief Array defining the main menu options.
+# @details Contains keys that correspond to the `MENU_ITEMS` associative array.
+#          These keys define the options available in the main menu.
+#
+# @example
+# MAIN_MENU=(
+#     "option_one"
+#     "option_two"
+#     "display_sub_menu"
+# )
+# -----------------------------------------------------------------------------
+MAIN_MENU=(
+    "option_one"
+    "option_two"
+    "display_sub_menu"
+)
+
+# -----------------------------------------------------------------------------
+# @var SUB_MENU
+# @brief Array defining the sub-menu options.
+# @details Contains keys that correspond to the `MENU_ITEMS` associative array.
+#          These keys define the options available in the sub-menu.
+#
+# @example
+# SUB_MENU=(
+#     "option_three"
+#     "display_main_menu"
+# )
+# -----------------------------------------------------------------------------
+SUB_MENU=(
+    "option_three"
+    "display_main_menu"
+)
+
+# -----------------------------------------------------------------------------
+# @brief Test function one
+# @details Executes a sample action for the "Option One" menu item.
+# -----------------------------------------------------------------------------
+option_one() {
+    # Debug declarations
+    local debug=$(start_debug "$@")
+
+    # Execute menu action
+    printf "\nRunning %s().\n" "$FUNCNAME"
+    pause
+
+    # Debug log: function exit
+    end_debug "$debug"
+}
+
+# -----------------------------------------------------------------------------
+# @brief Test function two
+# @details Executes a sample action for the "Option Two" menu item.
+# -----------------------------------------------------------------------------
+option_two() {
+    # Debug declarations
+    local debug=$(start_debug "$@")
+
+    # Execute menu action
+    printf "\nRunning %s().\n" "$FUNCNAME"
+    pause
+
+    # Debug log: function exit
+    end_debug "$debug"
+}
+
+# -----------------------------------------------------------------------------
+# @brief Test function three
+# @details Executes a sample action for the "Option Three" menu item.
+# -----------------------------------------------------------------------------
+option_three() {
+    # Debug declarations
+    local debug=$(start_debug "$@")
+
+    # Execute menu action
+    printf "\nRunning %s().\n" "$FUNCNAME"
+    pause
+
+    # Debug log: function exit
+    end_debug "$debug"
+}
+
+# -----------------------------------------------------------------------------
+# @brief Displays a menu based on the given menu array.
+# @details The menu items are numbered sequentially, and the user is prompted
+#          for input to select an option.
+#
+# @param $1 Array of menu keys to display.
+# @param $2 Debug flag for optional debug output.
+#
+# @global MENU_ITEMS Uses this global array to retrieve menu details.
+# @global MENU_HEADER Prints the global menu header.
+#
+# @throws Prints an error message if an invalid choice is made.
+#
+# @return Executes the corresponding function for the selected menu item.
+# -----------------------------------------------------------------------------
+display_menu() {
+    # Debug declarations
+    local debug=$(start_debug "$@")
+
+    local choice
+    local i=1
+    local menu_array=("${!1}")  # Array of menu keys to display
+
+    # Display the menu header
+    printf "%s\n\n" "$MENU_HEADER"
+    printf "Please select an option:\n\n"
+
+    # Display the menu items
+    for func in "${menu_array[@]}"; do
+        # Fixed-width format for consistent alignment
+        printf "%-4d%-30s\n" "$i" "${MENU_ITEMS[$func]}"
+        ((i++))
+    done
+    printf "%-4d%-30s\n" 0 "Exit"
+
+    # Read user choice
+    printf "\nEnter your choice: "
+    read -n 1 -sr choice < /dev/tty || true
+    printf "%s\n" "$choice"
+
+    # Validate input
+    if [[ -z "$choice" ]]; then
+        printf "No input provided. Please enter a valid choice.\n"
+        return
+    elif [[ "$choice" =~ ^[0-9]$ ]]; then
+        if [[ "$choice" -eq 0 ]]; then
+            printf "\nExiting.\n"
+            end_debug "$debug"
+            exit 0
+        elif [[ "$choice" -ge 1 && "$choice" -lt "$i" ]]; then
+            local func="${menu_array[choice-1]}"
+            "$func" "$debug"
+        else
+            printf "Invalid choice. Please try again.\n"
+        fi
+    else
+        printf "Invalid input. Please enter a number.\n"
+    fi
+
+    # Debug log: function exit
+    end_debug "$debug"
+}
+
+# -----------------------------------------------------------------------------
+# @brief Displays the main menu.
+# @details Calls the `display_menu` function with the main menu array.
+#
+# @param $1 Debug flag for optional debug output.
+#
+# @return Calls `display_menu` with the main menu array.
+# -----------------------------------------------------------------------------
+display_main_menu() {
+    # Debug declarations
+    local debug=$(start_debug "$@")
+
+    # Clear screen
+    clear
+    # Display the menu
+    display_menu MAIN_MENU[@] "$debug"
+
+    # Debug log: function exit
+    end_debug "$debug"
+}
+
+# -----------------------------------------------------------------------------
+# @brief Displays the sub-menu.
+# @details Calls the `display_menu` function with the sub-menu array. Loops
+#          within the sub-menu until the user chooses to exit.
+#
+# @param $1 Debug flag for optional debug output.
+#
+# @return Calls `display_menu` with the sub-menu array in a loop.
+# -----------------------------------------------------------------------------
+display_sub_menu() {
+    # Debug declarations
+    local debug=$(start_debug "$@")
+
+    while true; do
+        # Clear screen
+        clear
+        # Display the menu
+        display_menu SUB_MENU[@] "$debug"
+    done
+
+    # Debug log: function exit
+    end_debug "$debug"
+}
+
+# -----------------------------------------------------------------------------
+# @brief Entry point for the menu.
+# @details Initializes debugging if the "debug" flag is passed, starts the
+#          main menu loop, and ensures proper debug logging upon exit.
+#
+# @param $@ Arguments passed to the script. Pass "debug" for debug mode.
+#
+# @example
+# Execute the menu
+#   do_menu "$debug"
+# -----------------------------------------------------------------------------
+do_menu() {
+    # Debug declarations
+    local debug=$(start_debug "$@")
+
+    # Main script execution starts here
+    while true; do
+        display_main_menu "$debug"
+    done
+
+    # Debug log: function exit
+    end_debug "$debug"
+}
+
+############
+### Arguments Functions
+############
+
+# TODO:  Make these extensible
 
 # -----------------------------------------------------------------------------
 # @brief Define script options and their properties.
@@ -4405,41 +4846,16 @@ parse_args() {
     return 0
 }
 
-# ############
-# ### App-specific Installer Functions Here
-# ############
+############
+### App-specific Installer Functions Here
+############
 
-# ############
-# ### Main Functions
-# ############
+############
+### Main Functions
+############
 
-# -----------------------------------------------------------------------------
-# @brief The main entry point for the script.
-# @details This function orchestrates the execution of the script by invoking
-#          a series of functions to check the environment, validate dependencies,
-#          and perform the main tasks. Debugging can be enabled by passing the
-#          `debug` argument.
-#
-# @param $@ Command-line arguments. If `debug` is included, debug mode is enabled.
-#
-# @global None
-#
-# @return None
-#
-# @example
-# go_main         # Run the script normally.
-# go_main "debug" # Run the script in debug mode.
-# -----------------------------------------------------------------------------
-test() {
-    local debug=$(start_debug "$@") # Debug declarations, must be first line of func
-    #print_debug "Note in ${FUNCNAME:-script_body} at $LINENO" "$debug"
-    stack_trace "CRITICAL" "Trace in ${FUNCNAME:-main}() at line $LINENO." && exit 0
-    end_debug "$debug" # Func Exit: Next line must be a return/print/exit out of function
-    return 0
-}
 _main() {
     local debug=$(start_debug "$@") # Debug declarations, must be first line of func
-    test "$debug"
 
     # # Check and set up the environment
     # handle_execution_context "$debug"  # Get execution context and set environment variables
