@@ -1,9 +1,12 @@
-setaf 4#!/usr/bin/env bash
+#!/usr/bin/env bash
 set -uo pipefail # Setting -e is far too much work here
 IFS=$'\n\t'
 set +o noclobber
 
-# TODO:  Add git functions
+# TODO:
+#   - Add git functions
+#   - Add menu functions
+#   - Add git clone
 
 # -----------------------------------------------------------------------------
 # @file
@@ -867,27 +870,172 @@ pad_with_spaces() {
     return 0
 }
 
-##
-# @brief Print a detailed stack trace of the call hierarchy.
-# @details Outputs the sequence of function calls leading up to the point
-#          where this function was invoked. Supports optional error messages
-#          and colorized output based on terminal capabilities.
+# -----------------------------------------------------------------------------
+# @brief Wraps primary and secondary messages with ellipses for overflow lines.
+# @details Ensures that the primary and secondary messages fit within the
+#          specified line width. If a line overflows, ellipses are appended
+#          (or prepended for continuation lines). The processed messages are
+#          returned as a single string, separated by an ASCII delimiter (␞).
 #
-# @param $1 Log level (e.g., DEBUG, INFO, WARN, ERROR, CRITICAL).
-# @param $2 Optional error message to display at the top of the stack trace.
+# @param $1 [required] Maximum width of each line (numeric).
+# @param $2 [required] Primary message string.
+# @param $3 [required] Secondary message string.
 #
-# @global BASH_LINENO Array of line numbers in the call stack.
-# @global FUNCNAME Array of function names in the call stack.
-# @global BASH_SOURCE Array of source file names in the call stack.
+# @global None.
 #
-# @return None
-##
-stack_trace() {
-    # Define functions to skip
-    skip_functions=("die" "warn" "stack_trace")
-    encountered_main=0 # Track the first occurrence of main()
+# @throws None.
+#
+# @return A single string containing the formatted primary, overflow, and
+#         secondary messages, separated by the ASCII delimiter ␞.
+#
+# @example
+# result=$(wrap_messages 50 "Primary message" "Secondary message")
+# echo "$result"
+# -----------------------------------------------------------------------------
+wrap_messages() {
+    local line_width=$1        # Maximum width of each line
+    local primary=$2           # Primary message string
+    local secondary=$3         # Secondary message string
+    local delimiter="␞"        # ASCII delimiter (code 30) for separating messages
 
-    # Function to check if a function is in the skip list
+    # -----------------------------------------------------------------------------
+    # @brief Wraps a message into lines with ellipses for overflow or continuation.
+    # @details Splits the message into lines, appending an ellipsis for overflowed
+    #          lines and prepending it for continuation lines.
+    #
+    # @param $1 [required] The message string to wrap.
+    # @param $2 [required] Maximum width of each line (numeric).
+    #
+    # @global None.
+    #
+    # @throws None.
+    #
+    # @return A single string with wrapped lines, ellipses added as necessary.
+    #
+    # @example
+    # wrapped=$(wrap_message "This is a long message" 50)
+    # echo "$wrapped"
+    # -----------------------------------------------------------------------------
+    local wrap_message
+    wrap_message() {
+        local message=$1        # Input message to wrap
+        local width=$2          # Maximum width of each line
+        local result=()         # Array to store wrapped lines
+        local adjusted_width=$((width - 2))  # Adjust width for ellipses
+
+        # Process message line-by-line
+        while IFS= read -r line; do
+            result+=("$line")
+        done <<< "$(printf "%s\n" "$message" | fold -s -w "$adjusted_width")"
+
+        # Add ellipses to wrapped lines
+        for ((i = 0; i < ${#result[@]}; i++)); do
+            if ((i == 0)); then
+                # Append ellipsis to the first line
+                result[i]="${result[i]% }…"
+            elif ((i == ${#result[@]} - 1)); then
+                # Prepend ellipsis to the last line
+                result[i]="…${result[i]}"
+            else
+                # Add ellipses to both ends of middle lines
+                result[i]="…${result[i]% }…"
+            fi
+        done
+
+        # Return the wrapped lines as a single string
+        printf "%s\n" "${result[@]}"
+    }
+
+    # Process the primary message
+    local overflow=""          # Stores overflow lines from the primary message
+    if [[ ${#primary} -gt $line_width ]]; then
+        local wrapped_primary  # Temporarily stores the wrapped primary message
+        wrapped_primary=$(wrap_message "$primary" "$line_width")
+        overflow=$(printf "%s\n" "$wrapped_primary" | tail -n +2)
+        primary=$(printf "%s\n" "$wrapped_primary" | head -n 1)
+    fi
+
+    # Process the secondary message
+    if [[ ${#secondary} -gt $line_width ]]; then
+        secondary=$(wrap_message "$secondary" "$line_width")
+    fi
+
+    # Return the combined messages
+    printf "%s%b%s%b%s" "$primary" "$delimiter" "$overflow" "$delimiter" "$secondary"
+}
+
+# -----------------------------------------------------------------------------
+# @brief Prints a stack trace with optional formatting and a message.
+# @details This function generates and displays a formatted stack trace for
+#          debugging purposes. It includes a log level and optional details,
+#          with color-coded formatting and proper alignment.
+#
+# @param $1 [optional] Log level (DEBUG, INFO, WARN, ERROR, CRITICAL). Defaults to INFO.
+# @param $2 [optional] Primary message for the stack trace.
+# @param $@ [optional] Additional context or details for the stack trace.
+#
+# @global FUNCNAME Array of function names in the call stack.
+# @global BASH_LINENO Array of line numbers corresponding to the call stack.
+# @global THIS_SCRIPT The name of the current script, used for logging.
+# @global COLUMNS Console width, used for formatting output.
+#
+# @throws None.
+#
+# @return None. Outputs the stack trace and message to standard output.
+#
+# @example
+# stack_trace WARN "Unexpected condition detected."
+# -----------------------------------------------------------------------------
+stack_trace() {
+    # Determine log level and message
+    local level="${1:-INFO}"  # Default to INFO if $1 is not provided
+    local message=""
+
+    # Check if $1 is a valid level, otherwise treat it as the message
+    case "$level" in
+        DEBUG|INFO|WARN|WARNING|ERROR|CRIT|CRITICAL)
+            shift
+            ;;
+        *)
+            # If $1 is not a valid level, treat it as the beginning of the message
+            message="$level"
+            level="INFO"
+            shift
+            ;;
+    esac
+
+    # Concatenate all remaining arguments into $message
+    for arg in "$@"; do
+        message+="$arg "
+    done
+    # Trim trailing space
+    message="${message% }"
+
+    # Block width and character for header/footer
+    local width=60
+    local char="-"
+
+    # Define functions to skip
+    local skip_functions=("die" "warn" "stack_trace")
+    local encountered_main=0 # Track the first occurrence of main()
+
+    # Get the current function name in title case
+    local raw_function_name="${FUNCNAME[0]}"
+    local function_name
+    function_name="$(echo "$raw_function_name" | sed -E 's/_/ /g; s/\b(.)/\U\1/g; s/(\b[A-Za-z])([A-Za-z]*)/\1\L\2/g')"
+
+    # -----------------------------------------------------------------------------
+    # @brief Determines if a function should be skipped in the stack trace.
+    # @details Skips functions specified in the `skip_functions` list and
+    #          ignores duplicate `main()` entries.
+    #
+    # @param $1 Function name to evaluate.
+    #
+    # @return 0 if the function should be skipped, 1 otherwise.
+    #
+    # @example
+    # should_skip "main" && continue
+    # -----------------------------------------------------------------------------
     should_skip() {
         local func="$1"
         for skip in "${skip_functions[@]}"; do
@@ -895,7 +1043,6 @@ stack_trace() {
                 return 0 # Skip this function
             fi
         done
-
         # Skip duplicate main()
         if [[ "$func" == "main" ]]; then
             if (( encountered_main > 0 )); then
@@ -903,246 +1050,163 @@ stack_trace() {
             fi
             ((encountered_main++))
         fi
-
         return 1 # Do not skip
     }
 
-    # Inline function to strip hyphens and underscores and convert a string to title case
-    to_title_case() {
-        echo "$1" | sed -E 's/[-_]/ /g; s/\b(.)/\U\1/g; s/(\b[A-Za-z])([A-Za-z]*)/\1\L\2/g'
-    }
+    # Iterate through the stack to build the displayed stack
+    local displayed_stack=()
+    local longest_length=0  # Track the longest function name length
 
-    # Get the current function name in title case
-    local function_name
-    function_name="$(to_title_case "${FUNCNAME[0]}")"
+    # Handle a piped script calling stack_trace from main
+    if [[ -p /dev/stdin && ${#FUNCNAME[@]} == 1 ]]; then
+        displayed_stack+=("$(printf "%s|%s" "main()" "${BASH_LINENO[0]}")")
+    fi
 
-    # Block width and character for header/footer
-    local width=70
-    local char="-"
+    # Handle the rest of the stack
+    for ((i = 1; i < ${#FUNCNAME[@]}; i++)); do
+        local func="${FUNCNAME[i]}"
+        local line="${BASH_LINENO[i - 1]}"
+        local current_length=${#func}
+
+        # Skip ignored functions
+        if should_skip "$func"; then
+            continue
+        elif (( current_length > longest_length )); then
+            longest_length=$current_length
+        fi
+
+        # Prepend the formatted stack entry to reverse the order
+        displayed_stack=("$(printf "%s|%s" "$func()" "$line")" "${displayed_stack[@]}")
+    done
+
+    # -----------------------------------------------------------------------------
+    # @brief Provides a fallback for `tput` commands when errors occur.
+    # @details Returns an empty string if `tput` fails, ensuring no errors
+    #          propagate during color or formatting setup.
+    #
+    # @param $@ Command-line arguments passed directly to `tput`.
+    #
+    # @return Output of `tput` if successful, or an empty string if it fails.
+    #
+    # @example
+    # local bold=$(safe_tput bold)
+    # -----------------------------------------------------------------------------
+    safe_tput() { tput "$@" 2>/dev/null || printf ""; }
+
+    # General text attributes
+    local reset=$(safe_tput sgr0)
+    local bold=$(safe_tput bold)
+
+    # Foreground colors
+    local fgred=$(safe_tput setaf 1)  # Red text
+    local fggrn=$(safe_tput setaf 2)  # Green text
+    local fgylw=$(safe_tput setaf 3)  # Yellow text
+    local fgblu=$(safe_tput setaf 4)  # Blue text
+    local fgmag=$(safe_tput setaf 5)  # Magenta text
+    local fgcyn=$(safe_tput setaf 6)  # Cyan text
+    local fggld=$(safe_tput setaf 220)  # Gold text
+    [[ -z "$fggld" ]] && fggld="$fgylw"  # Fallback to yellow
+
+    # Determine color and label based on the log level
+    local color label
+    case "$level" in
+        DEBUG) color=${fgcyn}; label="[DEBUG]";;
+        INFO) color=${fggrn}; label="[INFO ]";;
+        WARN|WARNING) color=${fggld}; label="[WARN ]";;
+        ERROR) color=${fgmag}; label="[ERROR]";;
+        CRIT|CRITICAL) color=${fgred}; label="[CRIT ]";;
+    esac
 
     # Create header
     local dash_count=$(( (width - ${#function_name} - 2) / 2 ))
-    local header="$(printf '%*s' "$dash_count" | tr ' ' "$char") $function_name $(printf '%*s' "$dash_count" | tr ' ' "$char")"
-    [[ $(( (width - ${#function_name}) % 2 )) -eq 1 ]] && header="${header}${char}"
+    local header_l header_r
+    header_l="$(printf '%*s' "$dash_count" | tr ' ' "$char")"
+    header_r="$header_l"
+    [[ $(( (width - ${#function_name}) % 2 )) -eq 1 ]] && header_r="${header_r}${char}"
+    local header=$(printf "%b%s%b %b%b%s%b %b%s%b" "${color}" "${header_l}" "${reset}" "${color}" "${bold}" "${function_name}" "${reset}" "${color}" "${header_r}" "${reset}")
 
     # Create footer
-    local footer
-    footer="$(printf '%*s' "$width" | tr ' ' "$char")"
+    local footer="$(printf '%*s' "$width" "" | tr ' ' "$char")"
+    [[ -n "$color" ]] && footer="${color}${footer}${reset}"
 
     # Print header
-    echo "$header"
+    printf "%s\n" "$header"
 
-    # Iterate through the stack and skip unwanted functions
-    local top_function=""
-    local top_line=""
-    for ((i = ${#FUNCNAME[@]} - 1; i >= 1; i--)); do
-        local func="${FUNCNAME[i]}"
-        local line="${BASH_LINENO[i - 1]}"
+    # Print the message, if provided
+    if [[ -n "$message" ]]; then
+        # Extract the first word and preserve the rest
+        local first="${message%% *}"          # Extract up to the first space
+        local remainder="${message#* }"      # Remove the first word and the space
 
-        # Skip the functions in the skip list
-        if should_skip "$func"; then
-            continue
-        fi
+        # Format the message
+        message="$(printf "%b%b%s%b %b%b%s%b" \
+            "${bold}" "${color}" "$first" \
+            "${reset}" "${color}" "$remainder" \
+            "${reset}")"
 
-        # Capture the top valid function and line number
-        if [[ -z "$top_function" ]]; then
-            top_function="$func"
-            top_line="$line"
-        fi
+        # Print the formatted message
+        printf "%b\n" "$message"
+    fi
 
-        # Print stack entry
-        echo " > [$(( ${#FUNCNAME[@]} - i - 1 ))] [$func()] at line $line"
+    # Calculate indent for proper alignment
+    local indent=$(( ($width / 2) - ((longest_length + 28) / 2) ))
+
+    # Print the displayed stack in reverse order
+    for ((i = ${#displayed_stack[@]} - 1, idx = 0; i >= 0; i--, idx++)); do
+        IFS='|' read -r func line <<< "${displayed_stack[i]}"
+        printf "%b%*s [%d] Function: %-*s Line: %4s%b\n" "${color}" "$indent" ">" "$idx" "$((longest_length + 2))" "$func" "$line" "${reset}"
     done
-
-    # Print top of the heap
-    echo " > Top of Heap: [$top_function()] at line $top_line"
 
     # Print footer
-    echo "$footer"
-
-    return
-    ###########################################################################
-
-    # Pad to 14 spaces
-    pad_to_14() { printf "%-14s" "$1"; }
-    # Pad to 5 spaces
-    pad_to_5() { printf "%5s" "$1"; }
-
-    local script="${THIS_SCRIPT:-unknown_script}"
-
-    # Determine if we are piped
-    local is_piped=false
-    if [[ "$0" == "bash" ]]; then
-        is_piped=true
-    fi
-
-    local level="${1:-INFO}"  # Default to INFO if $1 is not provided
-    shift
-    case "$level" in
-        DEBUG|INFO|WARN|ERROR|CRITICAL) ;;  # Valid levels, do nothing
-        *) level="INFO" ;;  # Default to INFO if $1 is invalid
-    esac
-
-    local message="${1:-Stack trace called}" # Main error message
-
-    # Starting Points for Stack
-    local caller_func=""
-    local caller_line=0
-    local call_depth=0
-    local separator=""
-
-    # Get call depth
-    call_depth=${#FUNCNAME[@]}
-
-    # Debug message
-    printf "\nDebug print: %s\n" "$message" >&2
-    # Print Header
-    printf "%s\n" "$header" >&2
-
-    # Define functions to skip
-    skip_functions=("die" "warn" "stack_trace")
-    # Function to check if a function is in the skip list
-    should_skip() {
-        local func="$1"
-        for skip in "${skip_functions[@]}"; do
-            if [[ "$func" == "$skip" ]]; then
-                return 0 # Skip this function
-            fi
-        done
-        return 1 # Do not skip
-    }
-
-    # Collect functions and calculate the total displayed count
-    displayed_functions=()
-    for ((i = 0; i < call_depth; i++)); do
-        func_name="${FUNCNAME[i]:-main}"
-        if should_skip "$func_name"; then
-            continue
-        fi
-        displayed_functions+=("$i")
-    done
-
-    # Reverse display index
-    total_displayed=${#displayed_functions[@]}
-    for idx in "${!displayed_functions[@]}"; do
-        i=${displayed_functions[idx]}
-        reversed_index=$((total_displayed - idx - 1))
-
-        # Get Line Number
-        if (( i == 0 )); then
-            # Use $LINENO for the current function (stack_trace)
-            caller_line=$(printf -- "--\${BASH_LINENO[%d]}: %s" "$i" "$(pad_to_5 "$LINENO")")
-        else
-            # Use BASH_LINENO for the caller context
-            caller_line=$(printf -- "--\${BASH_LINENO[%d]}: %s" "$i" "$(pad_to_5 "${BASH_LINENO[i - 1]:-0}")")
-        fi
-        # Get function name
-        caller_func=$(printf -- "--\${FUNCNAME[%d]}: %s" "$i" "$(pad_to_14 "${FUNCNAME[i]}()")")
-
-        # Print the combined formatted output with the reversed display index
-        printf "[%d] %s %s\n" "$reversed_index" "$caller_func" "$caller_line" >&2
-    done
-    # Footer
-    printf "%s\n" "$footer" >&2
-
-
-    # Fallback to an empty string on error
-    safe_tput() { tput "$@" 2>/dev/null || printf ""; }
-
-
-
-    # General text attributes
-    local reset=$(safe_tput sgr0)
-    local bold=$(safe_tput bold)
-
-    # Foreground colors
-    local fgred=$(safe_tput setaf 1)
-    local fggrn=$(safe_tput setaf 2)
-    local fgcyn=$(safe_tput setaf 6)
-    local fggld=$(safe_tput setaf 3)
-
-    # Determine color and label based on the log level
-    local color
-    case "$level" in
-        "DEBUG") color=${fgcyn} ;;    # Cyan
-        "INFO") color=${fggrn} ;;     # Green
-        "WARN") color=${fggld} ;;     # Yellow
-        "ERROR") color=${fgred} ;;    # Red
-        "CRITICAL") color=${fgred} ;; # Red
-    esac
-    local label=$(to_title_case "$level")
-
-    # Print stack trace header
-    printf "%b%s%b\n" "$color" "$header" "$reset" >&2
-
-    # Print message
-    if [[ -n "$message" ]]; then
-        printf "%b[%s] [%s:%s():%s] %s%b\n" "$color" "$label" "$script" "$caller_func" "$caller_line" "$message" "$reset" >&2
-    fi
-
-    # Print Stack
-    printf "Depth: %s\n" "$depth" >&2
-    printf "%bStack trace:%b\n" "$color" "$reset" >&2
-    local stack_size=$(( ${#FUNCNAME[@]} ))  # Total number of functions in the stack
-
-    for ((i = stack_size - 1; i >= 0; i--)); do
-        local lineno="${BASH_LINENO[i-1]:-0}"  # Correct line number for the function
-        local func_name="${FUNCNAME[i]}"
-
-        # Print function and line number
-        printf "%b  [%d] %s() called at line %d%b\n" \
-            "$color" "$((stack_size - i - 1))" "$func_name" "$lineno" "$reset" >&2
-    done
-
-    # Print stack trace footer
-    printf "%b%s%b\n" "$color" "$(printf '%*s' "${#header}" | tr ' ' '-')" "$reset" >&2
+    printf "%b%s%b\n\n" "${color}" "$footer" "${reset}"
 }
 
 # -----------------------------------------------------------------------------
-# @brief Logs a warning or error message with optional details and a stack trace.
-# @details This function logs messages at the `WARNING` or `ERROR` level, with
-#          support for an optional stack trace for warnings. It appends the error
-#          level (numeric) and additional details to the log message if provided.
+# @brief Logs a warning message with optional details and stack trace.
+# @details Formats and logs a warning message to standard error. The function
+#          supports color-coded formatting, automatic line wrapping, and
+#          extended details. Optionally includes a stack trace if enabled.
 #
-#          Stack traces are included for warnings if `WARN_STACK_TRACE` is set
-#          to `true`. The function uses `BASH_LINENO` to identify the call stack.
+# @param $1 [optional] Numeric error code. Defaults to none.
+# @param $2 [optional] Primary warning message. Defaults to a generic warning.
+# @param $@ [optional] Additional details or context for the warning.
 #
-# @param $1 [Optional] Numeric error level. Defaults to `0` if not provided.
-# @param $2 [Optional] Log level. Acceptable values are `WARNING` or `ERROR`. Defaults to `WARNING`.
-# @param $3 [Optional] Main log message. Defaults to "A warning was raised on this line."
-# @param $4 [Optional] Additional details to include in the log.
+# @global THIS_SCRIPT The name of the current script, used for logging.
+# @global FUNCNAME Array of function names in the call stack.
+# @global BASH_LINENO Array of line numbers corresponding to the call stack.
+# @global COLUMNS Console width, used for formatting output.
+# @global WARN_STACK_TRACE Enables stack trace logging if set to true.
 #
-# @global WARN_STACK_TRACE Enables stack trace logging for warnings when set to `true`.
-# @global BASH_LINENO Array of line numbers in the call stack.
-# @global SCRIPT_NAME The name of the script being executed.
+# @throws None.
+#
+# @return None. Outputs the warning message to standard error.
 #
 # @example
-# warn 2 "WARNING" "Disk space is low" "Available space: 5GB"
-# warn 1 "ERROR" "Critical failure detected" "Terminating script"
+# warn 1 "Configuration file missing." "Using default settings."
 # -----------------------------------------------------------------------------
 warn() {
-    # Handle empty or unset FUNCNAME and BASH_LINENO gracefully
-    local func_name="${FUNCNAME[1]:-script_body}"
-    local caller_name="${FUNCNAME[2]:-script_body}"
-    local caller_line=${BASH_LINENO[0]:-0}
-    local script=$THIS_SCRIPT
-    # Determine if we are piped
-    local is_piped=false
-    if [[ "$0" == "bash" ]]; then
-        is_piped=true
-    fi
+    # Initialize variables
+    local script="${THIS_SCRIPT:-unknown}"       # This script's name
+    local func_name="${FUNCNAME[1]:-main}"       # Calling function
+    local caller_line=${BASH_LINENO[0]:-0}       # Calling line
+    local error_code=""                          # Error code, default blank
+    local message=""                             # Primary message
+    local details=""                             # Additional details
+    local width=${COLUMNS:-80}                   # Max console width
+    local delimiter="␞"                          # Delimiter for wrapped parts
 
-    local tag="WARN "       # Log tag
-    local message="${1:-A warning was raised on this line}"  # Default log message
-    message=$(add_period "$message")
-    caller_line=$(pad_with_spaces "$caller_line") # Format line number with leading spaces
-
-    # Special processing for calling from bash/body/piped
-    if [[ $func_name == "main" && $caller_name == "script_body" ]]; then
-        func_name="script_body"
-    fi
-
-    # Fallback to an empty string on error
+    # -----------------------------------------------------------------------------
+    # @brief Provides a fallback for `tput` commands when errors occur.
+    # @details Returns an empty string if `tput` fails, ensuring no errors
+    #          propagate during color or formatting setup.
+    #
+    # @param $@ Command-line arguments passed directly to `tput`.
+    #
+    # @return Output of `tput` if successful, or an empty string if it fails.
+    #
+    # @example
+    # local bold=$(safe_tput bold)
+    # -----------------------------------------------------------------------------
     safe_tput() { tput "$@" 2>/dev/null || printf ""; }
 
     # General text attributes
@@ -1150,95 +1214,239 @@ warn() {
     local bold=$(safe_tput bold)
 
     # Foreground colors
-    local fggld=$(safe_tput setaf 220)
+    local fgylw=$(safe_tput setaf 3)  # Yellow text
+    local fgblu=$(safe_tput setaf 4)  # Blue text
+    local fgcyn=$(safe_tput setaf 6)  # Cyan text
+    local fggld=$(safe_tput setaf 220)  # Gold text
+    [[ -z "$fggld" ]] && fggld="$fgylw"  # Fallback to yellow
 
-    # Determine color and label based on the log level
-    color=${fggld}  # Yellow
-    details="$*" # Remaining parameters as additional details
+    # -----------------------------------------------------------------------------
+    # @brief Creates a formatted prefix for logging messages.
+    # @details Combines color, labels, and positional information into a prefix.
+    #
+    # @param $1 Color for the prefix.
+    # @param $2 Label for the message (e.g., "[WARN ]").
+    #
+    # @return Formatted prefix as a string.
+    #
+    # @example
+    # local warn_prefix=$(format_prefix "$fggld" "[WARN ]")
+    # -----------------------------------------------------------------------------
+    format_prefix() {
+        local color=$1
+        local label=$2
+        printf "%b%s%b %b[%s:%s:%s]%b " \
+            "${bold}${color}" "$label" "${reset}" \
+            "${bold}" "$script" "$func_name" "$caller_line" "${reset}"
+    }
 
-    # Log the warning
-    printf "%b%b[%s]%b %b[%s:%s():%s]%b %s\n" \
-    "$color" "$bold" "$tag" "$reset" "$bold" "$script" "$func_name" "$caller_line" "$reset" "$message" >&2
+    # Generate prefixes
+    local warn_prefix=$(format_prefix "$fggld" "[WARN ]")
+    local extd_prefix=$(format_prefix "$fgcyn" "[EXTND]")
+    local dets_prefix=$(format_prefix "$fgblu" "[DETLS]")
 
-    # Include stack trace for warnings if enabled
-    if [[ "$WARN_STACK_TRACE" == "true" ]]; then
-        stack_trace "$level" "Stack trace for $level at line $caller_line: $message"
-    fi
-}
+    # Strip ANSI escape sequences for length calculation
+    local plain_warn_prefix=$(echo -e "$warn_prefix" | sed 's/\x1b\[[0-9;]*m//g')
+    local prefix_length=${#plain_warn_prefix}
+    local adjusted_width=$((width - prefix_length))
 
-# -----------------------------------------------------------------------------
-# @brief Log a critical error, print a stack trace, and exit the script.
-# @details This function logs a critical error message, optionally prints additional
-#          details and a stack trace, and then exits the script with a specified
-#          or default exit status.
-#
-# @param $1 [Optional] Exit status code. Defaults to `1` if not numeric.
-# @param $2 [Optional] Main error message. Defaults to "Unrecoverable error."
-# @param $@ [Optional] Additional details for the error.
-#
-# @global BASH_LINENO Array of line numbers in the call stack.
-# @global THIS_SCRIPT The name of the current script.
-#
-# @return Exits the script with the provided or default exit status.
-#
-# @example
-# die 2 "Configuration file missing" "Expected file: /etc/config.cfg"
-# die "An unexpected error occurred"
-# -----------------------------------------------------------------------------
-die() {
-    # Handle empty or unset FUNCNAME and BASH_LINENO gracefully
-    local func_name="${FUNCNAME[1]:-script_body}"
-    local caller_name="${FUNCNAME[2]:-script_body}"
-    local caller_line=${BASH_LINENO[0]:-0}
-    local script="${THIS_SCRIPT:-unknown_script}"
-
-    # Local variables
-    local exit_status="${1:-1}" # First parameter as exit status
-    if ! [[ "$exit_status" =~ ^[0-9]+$ ]]; then
-        exit_status=1
-    else
+    # Parse error code if the first parameter is numeric
+    if [[ -n "${1:-}" && "$1" =~ ^[0-9]+$ ]]; then
+        error_code=$((10#$1))  # Convert to numeric
         shift
     fi
 
-    local crit_tag="CRIT "       # Log tag
-    local dets_tag="EXTND"       # Log tag
-    caller_line=$(pad_with_spaces "$caller_line") # Format line number with leading spaces
+    # Process primary message
+    message=$(add_period "${1:-A warning was raised on this line}")
+    if [[ -n "$error_code" ]]; then
+        message=$(printf "%s Code: (%d)" "$message" "$error_code")
+    fi
+    shift
 
-    # Adjust func_name for script body calls
-    if [[ $func_name == "main" && $caller_name == "script_body" ]]; then
-        func_name="script_body"
+    # Process additional details
+    details="${1:-}"
+    shift
+    for arg in "$@"; do
+        details+=" $arg"
+    done
+    if [[ -n $details ]]; then
+        details=$(add_period "$details")
     fi
 
-    local message="${1:-Unrecoverable error}" # Main error message
-    shift
-    local details="${*:-}" # Capture remaining arguments as details
+    # Call wrap_and_combine_messages
+    local result
+    result=$(wrap_messages "$adjusted_width" "$message" "$details")
 
-    # Fallback to an empty string on error
-    safe_tput() { tput "$@" 2>/dev/null || printf ""; }
+    # Parse wrapped parts
+    local primary="${result%%${delimiter}*}"
+    result="${result#*${delimiter}}"
+    local overflow="${result%%${delimiter}*}"
+    local secondary="${result#*${delimiter}}"
+
+    # Print the primary message
+    printf "%s%s\n" "$warn_prefix" "$primary" >&2
+
+    # Print overflow lines
+    if [[ -n "$overflow" ]]; then
+        while IFS= read -r line; do
+            printf "%s%s\n" "$extd_prefix" "$line" >&2
+        done <<< "$overflow"
+    fi
+
+    # Print secondary details
+    if [[ -n "$secondary" ]]; then
+        while IFS= read -r line; do
+            printf "%s%s\n" "$dets_prefix" "$line" >&2
+        done <<< "$secondary"
+    fi
+
+    # Include stack trace for warnings if enabled
+    if [[ "${WARN_STACK_TRACE:-false}" == "true" ]]; then
+        stack_trace "WARNING" "$message"
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# @brief Terminates the script with a critical error message and details.
+# @details This function prints a critical error message along with optional
+#          details, formats them with color and indentation, and includes a
+#          stack trace for debugging. It then exits with the specified error code.
+#
+# @param $1 [optional] Numeric error code. Defaults to 1 if not provided.
+# @param $2 [optional] Primary error message. Defaults to "Critical error"
+#                      if not provided.
+# @param $@ [optional] Additional details or context for the error.
+#
+# @global THIS_SCRIPT The script's name, used for logging.
+# @global COLUMNS Console width, used to calculate message formatting.
+#
+# @throws Exits the script with the provided error code or the default value (1).
+#
+# @return None. Outputs formatted error messages and terminates the script.
+#
+# @example
+# die 127 "File not found" "The specified file is missing or inaccessible."
+# -----------------------------------------------------------------------------
+die() {
+    # Initialize variables
+    local script="${THIS_SCRIPT:-unknown}"       # This script's name
+    local func_name="${FUNCNAME[1]:-main}"       # Calling function
+    local caller_line=${BASH_LINENO[0]:-0}       # Calling line
+    local error_code=""                          # Error code, default blank
+    local message=""                             # Primary message
+    local details=""                             # Additional details
+    local width=${COLUMNS:-80}                   # Max console width
+    local delimiter="␞"                          # Delimiter for wrapped parts
+
+    # -----------------------------------------------------------------------------
+    # @brief Provides a fallback for `tput` commands when errors occur.
+    # @details Returns an empty string if `tput` fails, ensuring no errors
+    #          propagate during color or formatting setup.
+    #
+    # @param $@ Command-line arguments passed directly to `tput`.
+    #
+    # @return Output of `tput` if successful, or an empty string if it fails.
+    #
+    # @example
+    # local bold=$(safe_tput bold)
+    # -----------------------------------------------------------------------------
+    safe_tput() {
+        tput "$@" 2>/dev/null || printf ""
+    }
 
     # General text attributes
     local reset=$(safe_tput sgr0)
     local bold=$(safe_tput bold)
 
     # Foreground colors
-    local fgred=$(safe_tput setaf 1)
-    local fgblu=$(safe_tput setaf 4)
+    local fgred=$(safe_tput setaf 1)  # Red text
+    local fgblu=$(safe_tput setaf 4)  # Blue text
+    local fgcyn=$(safe_tput setaf 6)  # Cyan text
 
-    # Log an unrecoverable error message with exit status
-    message="$(remove_period "$message")"
-    printf "%b%b[%s]%b %b[%s:%s():%s]%b %s: Error Level (%d)\n" \
-        "$fgred" "$bold" "$crit_tag" "$reset" "$bold" "$script" "$func_name" "$caller_line" "$reset" "$message" "$exit_status" >&2
+    # -----------------------------------------------------------------------------
+    # @brief Formats a log message prefix with a specified label and color.
+    # @details Constructs a formatted prefix string that includes the label,
+    #          the script name, the calling function name, and the line number.
+    #
+    # @param $1 [required] Color for the label (e.g., `$fgred` for red text).
+    # @param $2 [required] Label for the prefix (e.g., "[CRIT ]").
+    #
+    # @return A formatted prefix string with color and details.
+    #
+    # @example
+    # local crit_prefix=$(format_prefix "$fgred" "[CRIT ]")
+    # -----------------------------------------------------------------------------
+    format_prefix() {
+        local color=$1
+        local label=$2
+        printf "%b%s%b %b[%s:%s:%s]%b " "${bold}${color}" "$label" "${reset}" "${bold}" "$script" "$func_name" "$caller_line" "${reset}"
+    }
 
-    if [[ -n "$details" ]]; then
-        details="$(add_period "$details")"
-        printf "%b%b[%s]%b %b[%s:%s():%s]%b Details: %s\n" \
-            "$fgblu" "$bold" "$dets_tag" "$reset" "$bold" "$script" "$func_name" "$caller_line" "$reset" "$details" >&2
+    # Generate prefixes
+    local crit_prefix=$(format_prefix "$fgred" "[CRIT ]")
+    local extd_prefix=$(format_prefix "$fgcyn" "[EXTND]")
+    local dets_prefix=$(format_prefix "$fgblu" "[DETLS]")
+
+    # Strip ANSI escape sequences for length calculation
+    local plain_crit_prefix=$(echo -e "$crit_prefix" | sed 's/\x1b\[[0-9;]*m//g')
+    local prefix_length=${#plain_crit_prefix}
+    local adjusted_width=$((width - prefix_length))
+
+    # Parse error code if the first parameter is numeric, default to 1
+    if [[ -n "${1:-}" && "$1" =~ ^[0-9]+$ ]]; then
+        error_code=$((10#$1))  # Convert to numeric
+        shift
+    else
+        error_code=1  # Default to 1 if no numeric value is provided
     fi
 
-    stack_trace "CRITICAL" "$message"
+    # Process primary message
+    message=$(add_period "${1:-Critical error}")
+    if [[ -n "$error_code" ]]; then
+        message=$(printf "%s Code: (%d)" "$message" "$error_code")
+    fi
+    shift
 
-    # Exit with the determined status
-    exit "$exit_status"
+    # Process additional details
+    details="${1:-}"
+    shift
+    for arg in "$@"; do
+        details+=" $arg"
+    done
+    if [[ -n $details ]]; then
+        details=$(add_period "$details")
+    fi
+
+    # Call wrap_and_combine_messages
+    local result
+    result=$(wrap_messages "$adjusted_width" "$message" "$details")
+
+    # Parse wrapped parts
+    local primary="${result%%${delimiter}*}"
+    result="${result#*${delimiter}}"
+    local overflow="${result%%${delimiter}*}"
+    local secondary="${result#*${delimiter}}"
+
+    # Print the primary message
+    printf "%s%s\n" "$crit_prefix" "$primary" >&2
+
+    # Print overflow lines
+    if [[ -n "$overflow" ]]; then
+        while IFS= read -r line; do
+            printf "%s%s\n" "$extd_prefix" "$line" >&2
+        done <<< "$overflow"
+    fi
+
+    # Print secondary details
+    if [[ -n "$secondary" ]]; then
+        while IFS= read -r line; do
+            printf "%s%s\n" "$dets_prefix" "$line" >&2
+        done <<< "$secondary"
+    fi
+
+    # Include stack trace for warnings if enabled
+    stack_trace "CRITICAL" "$message"
+    exit "$error_code"
 }
 
 # -----------------------------------------------------------------------------
@@ -4280,6 +4488,7 @@ _main() {
 
 main() { _main "$@"; };
 debug=$(start_debug "$@") # Debug declarations, must be first line of func
+die 999
 main "$@"
 end_debug "$debug" # Next line must be a return/print/exit out of function
 exit $?
