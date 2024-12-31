@@ -271,7 +271,6 @@ else
     readonly REAL_USER="$(whoami)"
 fi
 
-
 # -----------------------------------------------------------------------------
 # @var USE_CONSOLE
 # @brief Controls whether logging output is directed to the console.
