@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -uo pipefail # Setting -e is far too much work here
+set -uo pipefail
 IFS=$'\n\t'
 set +o noclobber
 
@@ -11,8 +11,10 @@ set +o noclobber
 # This script provides a robust framework for managing installation processes
 # with extensive logging, error handling, and system validation. It includes:
 # - Detailed stack traces for debugging.
-# - Dynamic logging configuration with support for various levels (DEBUG, INFO, etc.).
-# - System checks for compatibility with OS versions, architectures, dependencies, and environment variables.
+# - Dynamic logging configuration with support for various levels (DEBUG, INFO,
+#   etc.).
+# - System checks for compatibility with OS versions, architectures,
+#   dependencies, and environment variables.
 # - Internet connectivity validation with proxy support.
 # - Git repository context retrieval and semantic versioning utilities.
 #
@@ -44,14 +46,16 @@ set +o noclobber
 # Refer to the repository README for detailed function-level explanations.
 #
 # @warning
-# Ensure this script is executed with appropriate permissions (e.g., sudo for installation tasks).
+# Ensure this script is executed with appropriate permissions (e.g., sudo for
+# installation tasks).
 # -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------
 # @brief Trap unexpected errors during script execution.
-# @details Captures any errors (via the ERR signal) that occur during script execution.
-# Logs the function name and line number where the error occurred and exits the script.
-# The trap calls an error-handling function for better flexibility.
+# @details Captures any errors (via the ERR signal) that occur during script
+#          execution.
+# Logs the function name and line number where the error occurred and exits
+# the script. The trap calls an error-handling function for better flexibility.
 #
 # @global FUNCNAME Array containing function names in the call stack.
 # @global LINENO Line number where the error occurred.
@@ -132,7 +136,8 @@ if [[ -z "${THIS_SCRIPT:-}" ]]; then
         # Use BASH_SOURCE[0] if it is available and not "bash"
         THIS_SCRIPT=$(basename "${BASH_SOURCE[0]}")
     else
-        # If BASH_SOURCE[0] is unbound or equals "bash", use FALLBACK_SCRIPT_NAME
+        # If BASH_SOURCE[0] is unbound or equals "bash", use
+        # FALLBACK_SCRIPT_NAME
         THIS_SCRIPT="${FALLBACK_SCRIPT_NAME}"
     fi
 fi
@@ -720,17 +725,144 @@ readonly WARN_STACK_TRACE="${WARN_STACK_TRACE:-false}"  # Default to false if no
 ############
 
 # -----------------------------------------------------------------------------
+# @brief Handles shell exit operations, displaying session statistics.
+# @details This function is called automatically when the shell exits. It
+#          calculates and displays the number of commands executed during
+#          the session and the session's end timestamp. It is intended to
+#          provide users with session statistics before the shell terminates.
+#
+# @global EXIT This signal is trapped to call the `egress` function upon shell
+#              termination.
+#
+# @note The function uses `history | wc -l` to count the commands executed in
+#       the current session and `date` to capture the session end time.
+# -----------------------------------------------------------------------------
+function egress() {
+    # TODO:
+    true
+}
+
+# -----------------------------------------------------------------------------
+# @brief Wraps a message into lines with ellipses for overflow or continuation.
+# @details This function splits the message into lines, appending an ellipsis
+#          for overflowed lines and prepending it for continuation lines. The
+#          primary and secondary messages are processed separately and combined
+#          with a delimiter.
+#
+# @param $1 [required] The message string to wrap.
+# @param $2 [required] Maximum width of each line (numeric).
+# @param $3 [optional] The secondary message string to include (defaults to
+#                      an empty string).
+#
+# @global None.
+#
+# @throws None.
+#
+# @return A single string with wrapped lines and ellipses added as necessary.
+#         The primary and secondary messages are separated by a delimiter.
+#
+# @example
+# wrapped=$(wrap_messages "This is a long message" 50)
+# echo "$wrapped"
+# -----------------------------------------------------------------------------
+wrap_messages() {
+    local line_width=$1 # Maximum width of each line
+    local primary=$2    # Primary message string
+    local secondary=$3  # Secondary message string
+    local delimiter="␞" # ASCII delimiter (code 30) for separating messages
+
+    # -------------------------------------------------------------------------
+    # @brief Wraps a message into lines with ellipses for overflow or
+    #        continuation.
+    # @details Splits the message into lines, appending an ellipsis for
+    #          overflowed lines and prepending it for continuation lines.
+    #
+    # @param $1 [required] The message string to wrap.
+    # @param $2 [required] Maximum width of each line (numeric).
+    #
+    # @global None.
+    #
+    # @throws None.
+    #
+    # @return A single string with wrapped lines, ellipses added as necessary.
+    #
+    # @example
+    # wrapped=$(wrap_message "This is a long message" 50)
+    # echo "$wrapped"
+    # -------------------------------------------------------------------------
+    local wrap_message
+    wrap_message() {
+        local message=$1        # Input message to wrap
+        local width=$2          # Maximum width of each line
+        local result=()         # Array to store wrapped lines
+        local adjusted_width=$((width - 2))  # Adjust width for ellipses
+
+        # Process message line-by-line
+        while IFS= read -r line; do
+            result+=("$line")
+        done <<< "$(printf "%s\n" "$message" | fold -s -w "$adjusted_width")"
+
+        # Add ellipses to wrapped lines
+        for ((i = 0; i < ${#result[@]}; i++)); do
+            if ((i == 0)); then
+                # Append ellipsis to the first line
+                result[i]="${result[i]% }…"
+            elif ((i == ${#result[@]} - 1)); then
+                # Prepend ellipsis to the last line
+                result[i]="…${result[i]}"
+            else
+                # Add ellipses to both ends of middle lines
+                result[i]="…${result[i]% }…"
+            fi
+        done
+
+        # Return the wrapped lines as a single string
+        printf "%s\n" "${result[@]}"
+    }
+
+    # Process the primary message
+    local overflow=""          # Stores overflow lines from the primary message
+    if [[ ${#primary} -gt $line_width ]]; then
+        local wrapped_primary  # Temporarily stores the wrapped primary message
+        wrapped_primary=$(wrap_message "$primary" "$line_width")
+        overflow=$(printf "%s\n" "$wrapped_primary" | tail -n +2)
+        primary=$(printf "%s\n" "$wrapped_primary" | head -n 1)
+    fi
+
+    # Process the secondary message
+    if [[ ${#secondary} -gt $line_width ]]; then
+        secondary=$(wrap_message "$secondary" "$line_width")
+    fi
+
+    # Return the combined messages
+    printf "%s%b%s%b%s" /
+        "$primary" /
+        "$delimiter" /
+        "$overflow" /
+        "$delimiter" /
+        "$secondary"
+}
+
+# -----------------------------------------------------------------------------
 # @brief Starts the debug process.
 # @details This function checks if the "debug" flag is present in the
 #          arguments, and if so, prints the debug information including the
-#          function call and the line number.
+#          function name, the caller function name, and the line number where
+#          the function was called.
 #
 # @param "$@" Arguments to check for the "debug" flag.
-# @return The "debug" flag if present, or an empty string if not.
+#
+# @return Returns the "debug" flag if present, or an empty string if not.
+#
+# @example
+# debug_start "debug"  # Prints debug information
+# debug_start          # Does not print anything, returns an empty string
 # -----------------------------------------------------------------------------
 debug_start() {
     local debug=""
     local args=()  # Array to hold non-debug arguments
+
+    # Look for the "debug" flag in the provided arguments
     for arg in "$@"; do
         if [[ "$arg" == "debug" ]]; then
             debug="debug"
@@ -741,15 +873,15 @@ debug_start() {
     # Handle empty or unset FUNCNAME and BASH_LINENO gracefully
     local func_name="${FUNCNAME[1]:-main}"
     local caller_name="${FUNCNAME[2]:-main}"
-    local caller_line=${BASH_LINENO[0]:-0}
+    local caller_line=${BASH_LINENO[1]:-0}
 
     # Print debug information if the flag is set
     if [[ "$debug" == "debug" ]]; then
-        printf "[DEBUG:%s] Starting function %s() called by %s():%d.\n" \
+        printf "[DEBUG in %s] Starting function %s() called by %s():%d.\n" \
         "$THIS_SCRIPT" "$func_name" "$caller_name" "$caller_line" >&2
     fi
 
-    # Return debug flag if present
+    # Return the debug flag if present, or an empty string if not
     printf "%s\n" "${debug:-}"
     return 0
 }
@@ -758,32 +890,49 @@ debug_start() {
 # @brief Filters out the "debug" flag from the arguments.
 # @details This function removes the "debug" flag from the list of arguments
 #          and returns the filtered arguments. The debug flag is not passed
-#          to other functions.
+#          to other functions to avoid unwanted debug outputs.
 #
 # @param "$@" Arguments to filter.
-# @return Filtered arguments, excluding "debug".
+#
+# @return Returns a string of filtered arguments, excluding "debug".
+#
+# @example
+# debug_filter "arg1" "debug" "arg2"  # Returns "arg1 arg2"
 # -----------------------------------------------------------------------------
 debug_filter() {
-    local args=()
+    local args=()  # Array to hold non-debug arguments
+
+    # Iterate over each argument and exclude "debug"
     for arg in "$@"; do
-        [[ "$arg" == "debug" ]] || args+=("$arg")
+        if [[ "$arg" != "debug" ]]; then
+            args+=("$arg")
+        fi
     done
+
+    # Print the filtered arguments, safely quoting them for use in a command
     printf "%q " "${args[@]}"
 }
 
 # -----------------------------------------------------------------------------
 # @brief Prints a debug message if the debug flag is set.
-# @details This function checks if the "debug" flag is present in the arguments
-#          and, if so, prints the provided debug message along with the function
-#          and line number where it was called.
+# @details This function checks if the "debug" flag is present in the
+#          arguments. If the flag is present, it prints the provided debug
+#          message along with the function name and line number from which the
+#          function was called.
 #
-# @param "$@" Arguments to check for the "debug" flag and message.
-# @global debug Debug flag, passed from the calling function.
-# @return None
+# @param "$@" Arguments to check for the "debug" flag and the debug message.
+# @global debug A flag to indicate whether debug messages should be printed.
+#
+# @return None.
+#
+# @example
+# debug_print "debug" "This is a debug message"
 # -----------------------------------------------------------------------------
 debug_print() {
     local debug=""
     local args=()  # Array to hold non-debug arguments
+
+    # Loop through all arguments and identify the "debug" flag
     for arg in "$@"; do
         if [[ "$arg" == "debug" ]]; then
             debug="debug"
@@ -791,36 +940,44 @@ debug_print() {
             args+=("$arg")  # Add non-debug arguments to the array
         fi
     done
-    # Restore positional parameters
+
+    # Restore the positional parameters with the filtered arguments
     set -- "${args[@]}"
 
     # Handle empty or unset FUNCNAME and BASH_LINENO gracefully
     local caller_name="${FUNCNAME[1]:-main}"
-    local caller_line=${BASH_LINENO[0]:-0}
+    local caller_line="${BASH_LINENO[0]:-0}"
 
-    # Assign the remaining argument to the message. Defaults to <unset>
+    # Assign the remaining argument to the message, defaulting to <unset>
     local message="${1:-<unset>}"
 
-    # Print debug information if the flag is set
+    # Print debug information if the debug flag is set
     if [[ "$debug" == "debug" ]]; then
-        printf "[DEBUG:%s] Message: '%s' sent by %s():%d.\n" \
+        printf "[DEBUG in %s] '%s' from %s():%d.\n" \
         "$THIS_SCRIPT" "$message" "$caller_name" "$caller_line" >&2
     fi
 }
 
 # -----------------------------------------------------------------------------
 # @brief Ends the debug process.
-# @details This function checks if the "debug" flag is present in the arguments
-#          and, if so, prints the debug information indicating the exit of
-#          the function, along with the function name and line number.
+# @details This function checks if the "debug" flag is present in the
+#          arguments. If the flag is present, it prints debug information
+#          indicating the exit of the function, along with the function name
+#          and line number from where the function was called.
 #
 # @param "$@" Arguments to check for the "debug" flag.
 # @global debug Debug flag, passed from the calling function.
+#
 # @return None
+#
+# @example
+# debug_end "debug"
 # -----------------------------------------------------------------------------
 debug_end() {
     local debug=""
     local args=()  # Array to hold non-debug arguments
+
+    # Loop through all arguments and identify the "debug" flag
     for arg in "$@"; do
         if [[ "$arg" == "debug" ]]; then
             debug="debug"
@@ -831,30 +988,38 @@ debug_end() {
     # Handle empty or unset FUNCNAME and BASH_LINENO gracefully
     local func_name="${FUNCNAME[1]:-main}"
     local caller_name="${FUNCNAME[2]:-main}"
-    local caller_line=${BASH_LINENO[0]:-0}
+    local caller_line="${BASH_LINENO[0]:-0}"
 
-    # Print debug information if the flag is set
+    # Print debug information if the debug flag is set
     if [[ "$debug" == "debug" ]]; then
-        printf "[DEBUG:%s] Exiting function %s() called by %s():%d.\n" \
+        printf "[DEBUG in %s] Exiting function %s() called by %s():%d.\n" \
         "$THIS_SCRIPT" "$func_name" "$caller_name" "$caller_line" >&2
     fi
 }
 
 # -----------------------------------------------------------------------------
-# @brief Pads a number with spaces.
-# @details Pads the input number with spaces to the left. Defaults to 4 characters wide but accepts an optional width.
-#          Also accepts an optional debug flag, which, when set to "debug", enables debug output.
+# @brief Pads a number with leading spaces to achieve the desired width.
+# @details This function takes a number and a specified width, and returns the
+#          number formatted with leading spaces if necessary. The number is
+#          guaranteed to be a valid non-negative integer, and the width is
+#          checked to ensure it is a positive integer. If "debug" is passed as
+#          the second argument, it defaults the width to 4 and provides debug
+#          information.
 #
-# @param $1 The number to pad (e.g., "7").
-# @param $2 (Optional) The width of the output (default is 4). If debug is provided here, it will be considered the debug flag.
-# @param $3 (Optional) The debug flag. Pass "debug" to enable debug output.
+# @param $1 [required] The number to be padded (non-negative integer).
+# @param $2 [optional] The width of the output (defaults to 4 if not provided).
 #
-# @return The padded number with spaces as a string.
+# @return 0 on success.
+#
+# @example
+# pad_with_spaces 42 6  # Output: "   42"
+# pad_with_spaces 123 5  # Output: "  123"
 # -----------------------------------------------------------------------------
 pad_with_spaces() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
     # Declare locals
-    local number="$1"       # Input number (mandatory)
+    local number="${1:-0}"  # Input number (mandatory)
     local width="${2:-4}"   # Optional width (default is 4)
 
     # If the second parameter is "debug", adjust the arguments
@@ -879,7 +1044,7 @@ pad_with_spaces() {
     # Format the number with leading spaces and return it as a string
     printf "%${width}d\n" "$number"
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug"  # Next line must be a return/print/exit out of function
     return 0
 }
 
@@ -983,7 +1148,8 @@ wrap_messages() {
 #          debugging purposes. It includes a log level and optional details,
 #          with color-coded formatting and proper alignment.
 #
-# @param $1 [optional] Log level (DEBUG, INFO, WARN, ERROR, CRITICAL). Defaults to INFO.
+# @param $1 [optional] Log level (DEBUG, INFO, WARN, ERROR, CRITICAL).
+#           Defaults to INFO.
 # @param $2 [optional] Primary message for the stack trace.
 # @param $@ [optional] Additional context or details for the stack trace.
 #
@@ -1010,7 +1176,7 @@ stack_trace() {
             shift
             ;;
         *)
-            # If $1 is not a valid level, treat it as the beginning of the message
+            # If $1 is not valid, treat it as the beginning of the message
             message="$level"
             level="INFO"
             shift
@@ -1035,9 +1201,10 @@ stack_trace() {
     # Get the current function name in title case
     local raw_function_name="${FUNCNAME[0]}"
     local function_name
-    function_name="$(echo "$raw_function_name" | sed -E 's/_/ /g; s/\b(.)/\U\1/g; s/(\b[A-Za-z])([A-Za-z]*)/\1\L\2/g')"
+    function_name="$(echo "$raw_function_name" | /
+        sed -E 's/_/ /g; s/\b(.)/\U\1/g; s/(\b[A-Za-z])([A-Za-z]*)/\1\L\2/g')"
 
-    # -----------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # @brief Determines if a function should be skipped in the stack trace.
     # @details Skips functions specified in the `skip_functions` list and
     #          ignores duplicate `main()` entries.
@@ -1048,7 +1215,7 @@ stack_trace() {
     #
     # @example
     # should_skip "main" && continue
-    # -----------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     should_skip() {
         local func="$1"
         for skip in "${skip_functions[@]}"; do
@@ -1089,10 +1256,13 @@ stack_trace() {
         fi
 
         # Prepend the formatted stack entry to reverse the order
-        displayed_stack=("$(printf "%s|%s" "$func()" "$line")" "${displayed_stack[@]}")
+        displayed_stack=("$(printf "%s|%s" /
+            "$func()" /
+            "$line")" /
+            "${displayed_stack[@]}")
     done
 
-    # -----------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # @brief Provides a fallback for `tput` commands when errors occur.
     # @details Returns an empty string if `tput` fails, ensuring no errors
     #          propagate during color or formatting setup.
@@ -1103,7 +1273,7 @@ stack_trace() {
     #
     # @example
     # local bold=$(safe_tput bold)
-    # -----------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     safe_tput() { tput "$@" 2>/dev/null || printf ""; }
 
     # General text attributes
@@ -1135,8 +1305,19 @@ stack_trace() {
     local header_l header_r
     header_l="$(printf '%*s' "$dash_count" | tr ' ' "$char")"
     header_r="$header_l"
-    [[ $(( (width - ${#function_name}) % 2 )) -eq 1 ]] && header_r="${header_r}${char}"
-    local header=$(printf "%b%s%b %b%b%s%b %b%s%b" "${color}" "${header_l}" "${reset}" "${color}" "${bold}" "${function_name}" "${reset}" "${color}" "${header_r}" "${reset}")
+    [[ $(( (width - ${#function_name}) % 2 )) -eq 1 ]] && /
+        header_r="${header_r}${char}"
+    local header=$(printf "%b%s%b %b%b%s%b %b%s%b" /
+        "${color}" /
+        "${header_l}" /
+        "${reset}" /
+        "${color}" /
+        "${bold}" /
+        "${function_name}" /
+        "${reset}" /
+        "${color}" /
+        "${header_r}" /
+        "${reset}")
 
     # Create footer
     local footer="$(printf '%*s' "$width" "" | tr ' ' "$char")"
@@ -1148,8 +1329,8 @@ stack_trace() {
     # Print the message, if provided
     if [[ -n "$message" ]]; then
         # Extract the first word and preserve the rest
-        local first="${message%% *}"          # Extract up to the first space
-        local remainder="${message#* }"      # Remove the first word and the space
+        local first="${message%% *}"    # Extract up to the first space
+        local remainder="${message#* }" # Remove the first word and the space
 
         # Format the message
         message="$(printf "%b%b%s%b %b%b%s%b" \
@@ -1167,7 +1348,15 @@ stack_trace() {
     # Print the displayed stack in reverse order
     for ((i = ${#displayed_stack[@]} - 1, idx = 0; i >= 0; i--, idx++)); do
         IFS='|' read -r func line <<< "${displayed_stack[i]}"
-        printf "%b%*s [%d] Function: %-*s Line: %4s%b\n" "${color}" "$indent" ">" "$idx" "$((longest_length + 2))" "$func" "$line" "${reset}"
+        printf "%b%*s [%d] Function: %-*s Line: %4s%b\n" /
+            "${color}" /
+            "$indent" /
+            ">" /
+            "$idx" /
+            "$((longest_length + 2))" /
+            "$func" /
+            "$line" /
+            "${reset}"
     done
 
     # Print footer
@@ -1175,27 +1364,22 @@ stack_trace() {
 }
 
 # -----------------------------------------------------------------------------
-# @brief Logs a warning message with optional details and stack trace.
-# @details Formats and logs a warning message to standard error. The function
-#          supports color-coded formatting, automatic line wrapping, and
-#          extended details. Optionally includes a stack trace if enabled.
+# @brief Logs a warning message with optional additional details and
+#        formatting.
+# @details This function outputs a formatted warning message with color and
+#          positional information (script name, function, and line number).
+#          If additional details are provided, they are included in the
+#          message. The function also supports including an error code and
+#          handling stack traces if enabled.
 #
-# @param $1 [optional] Numeric error code. Defaults to none.
-# @param $2 [optional] Primary warning message. Defaults to a generic warning.
-# @param $@ [optional] Additional details or context for the warning.
+# @param $1 [optional] The primary message to log. Defaults to "A warning was
+#                      raised on this line" if not provided.
+# @param $@ [optional] Additional details to include in the warning message.
 #
-# @global THIS_SCRIPT The name of the current script, used for logging.
-# @global FUNCNAME Array of function names in the call stack.
-# @global BASH_LINENO Array of line numbers corresponding to the call stack.
-# @global COLUMNS Console width, used for formatting output.
-# @global WARN_STACK_TRACE Enables stack trace logging if set to true.
-#
-# @throws None.
-#
-# @return None. Outputs the warning message to standard error.
+# @return None.
 #
 # @example
-# warn 1 "Configuration file missing." "Using default settings."
+# warn "File not found" "Please check the file path."
 # -----------------------------------------------------------------------------
 warn() {
     # Initialize variables
@@ -1208,7 +1392,7 @@ warn() {
     local width=${COLUMNS:-80}                   # Max console width
     local delimiter="␞"                          # Delimiter for wrapped parts
 
-    # -----------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # @brief Provides a fallback for `tput` commands when errors occur.
     # @details Returns an empty string if `tput` fails, ensuring no errors
     #          propagate during color or formatting setup.
@@ -1218,8 +1402,8 @@ warn() {
     # @return Output of `tput` if successful, or an empty string if it fails.
     #
     # @example
-    # local bold=$(safe_tput bold)
-    # -----------------------------------------------------------------------------
+    #     local bold=$(safe_tput bold)
+    # -------------------------------------------------------------------------
     safe_tput() { tput "$@" 2>/dev/null || printf ""; }
 
     # General text attributes
@@ -1233,18 +1417,19 @@ warn() {
     local fggld=$(safe_tput setaf 220)  # Gold text
     [[ -z "$fggld" ]] && fggld="$fgylw"  # Fallback to yellow
 
-    # -----------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # @brief Creates a formatted prefix for logging messages.
-    # @details Combines color, labels, and positional information into a prefix.
+    # @details Combines color, labels, and positional information into a
+    #          prefix.
     #
-    # @param $1 Color for the prefix.
-    # @param $2 Label for the message (e.g., "[WARN ]").
+    # @param $1 [required] Color for the prefix.
+    # @param $2 [required] Label for the message (e.g., "[WARN ]").
     #
-    # @return Formatted prefix as a string.
+    # @return [string] Formatted prefix as a string.
     #
     # @example
     # local warn_prefix=$(format_prefix "$fggld" "[WARN ]")
-    # -----------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     format_prefix() {
         local color=$1
         local label=$2
@@ -1323,7 +1508,8 @@ warn() {
 # @brief Terminates the script with a critical error message and details.
 # @details This function prints a critical error message along with optional
 #          details, formats them with color and indentation, and includes a
-#          stack trace for debugging. It then exits with the specified error code.
+#          stack trace for debugging. It then exits with the specified error
+#          code.
 #
 # @param $1 [optional] Numeric error code. Defaults to 1 if not provided.
 # @param $2 [optional] Primary error message. Defaults to "Critical error"
@@ -1333,7 +1519,8 @@ warn() {
 # @global THIS_SCRIPT The script's name, used for logging.
 # @global COLUMNS Console width, used to calculate message formatting.
 #
-# @throws Exits the script with the provided error code or the default value (1).
+# @throws Exits the script with the provided error code or the default
+#         value (1).
 #
 # @return None. Outputs formatted error messages and terminates the script.
 #
@@ -1351,7 +1538,7 @@ die() {
     local width=${COLUMNS:-80}                   # Max console width
     local delimiter="␞"                          # Delimiter for wrapped parts
 
-    # -----------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # @brief Provides a fallback for `tput` commands when errors occur.
     # @details Returns an empty string if `tput` fails, ensuring no errors
     #          propagate during color or formatting setup.
@@ -1362,7 +1549,7 @@ die() {
     #
     # @example
     # local bold=$(safe_tput bold)
-    # -----------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     safe_tput() {
         tput "$@" 2>/dev/null || printf ""
     }
@@ -1376,7 +1563,7 @@ die() {
     local fgblu=$(safe_tput setaf 4)  # Blue text
     local fgcyn=$(safe_tput setaf 6)  # Cyan text
 
-    # -----------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     # @brief Formats a log message prefix with a specified label and color.
     # @details Constructs a formatted prefix string that includes the label,
     #          the script name, the calling function name, and the line number.
@@ -1388,11 +1575,19 @@ die() {
     #
     # @example
     # local crit_prefix=$(format_prefix "$fgred" "[CRIT ]")
-    # -----------------------------------------------------------------------------
+    # -------------------------------------------------------------------------
     format_prefix() {
         local color=$1
         local label=$2
-        printf "%b%s%b %b[%s:%s:%s]%b " "${bold}${color}" "$label" "${reset}" "${bold}" "$script" "$func_name" "$caller_line" "${reset}"
+        printf "%b%s%b %b[%s:%s:%s]%b " /
+            "${bold}${color}" /
+            "$label" /
+            "${reset}" /
+            "${bold}" /
+            "$script" /
+            "$func_name" /
+            "$caller_line" /
+            "${reset}"
     }
 
     # Generate prefixes
@@ -1500,30 +1695,29 @@ add_dot() {
 }
 
 # -----------------------------------------------------------------------------
-# @brief Remove a leading dot (`.`) from a string if present.
-# @details This function processes the input string and removes a leading dot
-#          if it exists. If the input string is empty, the function logs an error
-#          and returns an error code.
+# @brief Removes a leading dot from the input string, if present.
+# @details This function checks if the input string starts with a dot (`.`)
+#          and removes it. If the input is empty, an error message is logged.
+#          The function handles empty strings by returning an error and logging
+#          an appropriate warning message.
 #
-# @param $1 The input string to process.
+# @param $1 [required] The input string to process.
 #
-# @return Outputs the modified string without a leading dot if one was present.
-# @retval 1 If the input string is empty.
+# @return 0 on success, 1 on failure (when the input is empty).
 #
 # @example
-# remove_dot ".example"  # Outputs "example"
-# remove_dot "example"   # Outputs "example"
-# remove_dot ""          # Logs an error and returns an error code.
+# remove_dot ".hidden"  # Output: "hidden"
+# remove_dot "visible"  # Output: "visible"
 # -----------------------------------------------------------------------------
 remove_dot() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local input=${1:-}  # Input string to process
 
     # Validate input
     if [[ -z "$input" ]]; then
         warn "ERROR" "Input to remove_dot cannot be empty."
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+        debug_end "$debug"  # Next line must be a return/print/exit from func
         return 1
     fi
 
@@ -1532,35 +1726,34 @@ remove_dot() {
         input="${input#.}"
     fi
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug"  # Next line must be a return/print/exit out of function
     printf "%s\n" "$input"
 }
 
 # -----------------------------------------------------------------------------
-# @brief Add a periot (`.`) at the end of a string if it's missing.
-# @details This function ensures the input string ends with a period.
-#          If the input string is empty, the function logs a warning and returns
-#          an error code.
+# @brief Adds a period to the end of the input string if it doesn't already
+#        have one.
+# @details This function checks if the input string has a trailing period.
+#          If not, it appends one. If the input is empty, an error is logged.
 #
-# @param $1 The input string to process.
+# @param $1 [required] The input string to process.
 #
-# @return Outputs the modified string with a trailing period if it was missing.
-# @retval 1 If the input string is empty.
+# @return The input string with a period added at the end (if missing).
+# @return 1 If the input string is empty.
 #
 # @example
-# add_period "example"   # Outputs "example."
-# add_period "example."  # Outputs "example."
-# add_period ""          # Logs a warning and returns an error.
+# result=$(add_period "Hello")
+# echo "$result"  # Output: "Hello."
 # -----------------------------------------------------------------------------
 add_period() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local input=${1:-}  # Input string to process
 
     # Validate input
     if [[ -z "$input" ]]; then
         warn "Input to add_period cannot be empty."
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+        debug_end "$debug" # Next line must be a return/print/exit
         return 1
     fi
 
@@ -1569,7 +1762,7 @@ add_period() {
         input="$input."
     fi
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug"  # Next line must be a return/print/exit out of function
     printf "%s\n" "$input"
 }
 
@@ -4383,53 +4576,50 @@ finish_script() {
 }
 
 # -----------------------------------------------------------------------------
-# @brief Exit the script gracefully.
-# @details Logs a provided exit message or uses a default message and exits with
-#          a status code of 0. If the debug flag is set to "debug," it outputs
-#          additional debug information.
+# @brief Handles script exit operations and logs the exit message.
+# @details This function is designed to handle script exit operations by logging
+#          the exit message along with the status code, function name, and line
+#          number where the exit occurred. The function also supports an optional
+#          message and exit status, with default values provided if not supplied.
+#          After logging the exit message, the script will terminate with the
+#          specified exit status.
 #
-# @param $1 [Optional] Exit code
-# @param $2 [Optional] Message to log before exiting. Defaults to "Exiting."
-# @param $2 [Optional] Debug flag. Pass "debug" to enable debug output.
+# @param $1 [optional] Exit status code (default is 1 if not provided).
+# @param $2 [optional] Message to display upon exit (default is "Exiting
+#           script.").
 #
-# @return None
+# @return None.
 #
 # @example
-# exit_script "Finished processing successfully." debug
+# exit_script 0 "Completed successfully"
+# exit_script 1 "An error occurred"
 # -----------------------------------------------------------------------------
 exit_script() {
     local debug=$(debug_start "$@")     # Debug declarations, must be first line
 
     # Local variables
-    local exit_status="${1:-}"          # First parameter as exit status
-    local message                       # Main error message
-    local details                       # Additional details
-    local lineno="${BASH_LINENO[0]}"    # Line number where the exit was called
-    lineno=$(pad_with_spaces "$lineno") # Pad line number with spaces for consistency
+    local exit_status="${1:-}"              # First parameter as exit status
+    local message="${2:-Exiting script.}"   # Main error message wit default
+    local details                           # Additional details
+    local lineno="${BASH_LINENO[0]}"        # Line number of calling line
+    lineno=$(pad_with_spaces "$lineno")     # Pad line number with spaces
+    local caller_func="${FUNCNAME[1]}"      # Calling function name
 
-    # Determine exit status and message
+    # Determine exit status if not numeric
     if ! [[ "$exit_status" =~ ^[0-9]+$ ]]; then
         exit_status=1
-        message="${1:-}"
-        shift
+        message="${message}"  # No need to overwrite message here
     else
-        shift
-        message="${1:-Exiting script.}"
-        shift
+        shift  # Remove the exit_status from the arguments
     fi
 
-    local message="${1:-}"
-    if [[ -z "$message" ]]; then
-        message="Exiting"
-    else
-        message="$1"
-    fi
-
+    # Remove trailing dot if needed
     message=$(remove_dot "$message")
-    printf "[EXIT ] %s at line %s status: (%d).\n" "$message" "$lineno" "$exit_status" # Log the provided or default message
+    # Log the provided or default message
+    printf "[EXIT ] '%s' from %s:%d status (%d).\n" "$message" "$caller_func" "$lineno" "$exit_status"
 
     debug_end "$debug" # Next line must be a return/print/exit out of function
-    exit 0
+    exit "$exit_status"  # Exit with the provided status
 }
 
 ############
@@ -4668,152 +4858,574 @@ do_menu() {
 ### Arguments Functions
 ############
 
-# TODO:  Make these extensible
-
 # -----------------------------------------------------------------------------
-# @brief Define script options and their properties.
-# @details Each option includes its long form, short form, and description.
+# @brief List of word arguments.
+# @details Each entry in the list corresponds to a word argument and contains
+#          the argument name, the associated function, a brief description,
+#          and a flag indicating whether the function should exit after
+#          processing the argument.
 #
-# @global OPTIONS Associative array of script options and their properties.
-#
-# @return None
+# @var arguments_list
+# @brief List of word arguments.
+# @details The list holds the word arguments, their corresponding functions,
+#          descriptions, and exit flags. Each word argument triggers a
+#          specific function when encountered on the command line.
 # -----------------------------------------------------------------------------
-declare -A OPTIONS=(
-    ["--dry-run|-d"]="Enable dry-run mode (no actions performed)."
-    ["--version|-v"]="Display script version and exit."
-    ["--help|-h"]="Show this help message and exit."
-    ["--log-file|-f <path>"]="Specify the log file location."
-    ["--log-level|-l <level>"]="Set the logging verbosity level (DEBUG, INFO, WARNING, ERROR, CRITICAL)."
-    ["--terse|-t"]="Enable terse output mode."
-    ["--console|-c"]="Enable console logging."
+arguments_list=(
+    "word1 word_arg_one Handles word argument one 0"
+    "word2 word_arg_two Handles word argument two 1"
 )
 
 # -----------------------------------------------------------------------------
-# @brief Display script usage.
-# @details Generates usage dynamically based on the `OPTIONS` associative array.
-#          If the debug flag is set to "debug," a simple debug message will be printed.
+# @brief List of flagged arguments.
+# @details Each entry in the list corresponds to a flagged argument, containing
+#          the flag(s), a complex flag indicating if a secondary argument is
+#          required, the associated function, a description, and an exit flag
+#          indicating whether the function should terminate after processing.
 #
-# @param $1 [Optional] Debug flag. Pass "debug" to enable debug output.
-#
-# @global THIS_SCRIPT The name of the script.
-# @global OPTIONS Associative array of script options and their properties.
-#
-# @return None
-#
-# @example
-# usage debug
+# @var options_list
+# @brief List of flagged arguments.
+# @details This list holds the flags (which may include multiple pipe-delimited
+#          options), the associated function to call, whether a secondary
+#          argument is required, and whether the function should exit after
+#          processing.
 # -----------------------------------------------------------------------------
-usage() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+options_list=(
+    "-1|--flag_1 0 flag_arg_one Handles flag_arg_one 0"
+    "-2|--flag_2 0 flag_arg_two Handles flag_arg_two 1"
+    "-3|--flag_3 1 flag_arg_tre Handles flag_arg_tre 0"
+    "-4|--flag_4 1 flag_arg_fwr Handles flag_arg_fwr 1"
+    "-h|--help 0 usage Show these instructions 1"
+)
 
-    # Display the script usage
-    printf "Usage: %s [options]\n\n" "$THIS_SCRIPT"
-    printf "Options:\n"
-    for key in "${!OPTIONS[@]}"; do
-        printf "  %s: %s\n" "$key" "${OPTIONS[$key]}"
-    done
+# -----------------------------------------------------------------------------
+# @brief Handles the first word argument.
+# @details This function processes a plain word argument, constructs a message
+#          based on its value, and prints the message. If the argument is not
+#          provided, a default message is used. This function is designed as a
+#          demo for handling word arguments, showing how to pass and process
+#          arguments.
+#
+# @param $1 [optional] Turns on debug printing
+#
+# @return 0 on success, or the status of the last executed command.
+# -----------------------------------------------------------------------------
+word_arg_one() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+    local retval=0
+    local argument
+    argument="${1:-}"  # Use the first argument or default to an empty string
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
-    return 0
+    # -------------------------------------------------------------------------
+    # @brief Constructs a message based on the presence of the argument.
+    # @details If the argument is provided, a message with the argument value
+    #          is constructed. If no argument is provided, a default message
+    #          is used.
+    # -------------------------------------------------------------------------
+    local message
+    if [[ -n "$argument" ]]; then
+        message="Argument: ${argument}."
+    else
+        message="No arguments."
+    fi
+
+    # -------------------------------------------------------------------------
+    # @brief Print the constructed message.
+    # @details The message is printed using the debug_print function. If the
+    #          debug flag is set, the function outputs the message with debug
+    #          information.
+    # -------------------------------------------------------------------------
+    debug_print "$message" "$debug"
+    retval="$?"
+
+    debug_end "$debug"
+    return "$retval"
 }
 
 # -----------------------------------------------------------------------------
-# @brief Parse command-line arguments.
-# @details Processes the arguments passed to the script. Uses the `OPTIONS` array
-#          for validation and handling. Supports debug mode to log the parsing
-#          process and resulting variable values.
+# @brief Handles the first word argument.
+# @details This function processes a plain word argument, constructs a message
+#          based on its value, and prints the message. If the argument is not
+#          provided, a default message is used. This function is designed as a
+#          demo for handling word arguments, showing how to pass and process
+#          arguments.
 #
-# @param "$@" The command-line arguments passed to the script.
+# @param $1 [optional] Turns on debug printing if == "debug"
 #
-# @global DRY_RUN Updates the dry-run status based on input.
-# @global LOG_FILE Updates the log file path based on input.
-# @global LOG_LEVEL Updates the log verbosity level based on input.
-# @global TERSE Enables terse output mode if specified.
-# @global USE_CONSOLE Enables console output if specified.
-#
-# @return None
-#
-# @example
-# parse_args debug --dry-run --log-file mylog.txt
-# parse_args --dry-run --log-file mylog.txt debug
+# @return 0 on success, or the status of the last executed command.
 # -----------------------------------------------------------------------------
-parse_args() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+word_arg_two() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+    local retval=0
+    local argument
+    argument="${1:-}"  # Use the first argument or default to an empty string
 
-    # Process the arguments
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --dry-run|-d)
-                DRY_RUN=true
-                debug_print "DRY_RUN set to 'true'" "$debug"
-                shift
-                ;;
-            --version|-v)
-                print_version "$debug"
-                debug_end "$debug" # Next line must be a return/print/exit out of function # Debug log: function exit
-                exit 0
-                ;;
-            --help|-h)
-                usage "$debug"
-                debug_end "$debug" # Next line must be a return/print/exit out of function # Debug log: function exit
-                exit 0
-                ;;
-            --log-file|-f)
-                if [[ -n "$2" && "$2" != -* ]]; then
-                    LOG_FILE=$(realpath -m "$2" 2>/dev/null)
-                    debug_print "LOG_FILE set to '$LOG_FILE'" "$debug"
-                    shift 2 # Shift past the option and its value
-                else
-                                    printf "Option '%s' requires an argument.\n" "$1"
-                    debug_end "$debug" # Next line must be a return/print/exit out of function
-                    exit 1
-                fi
-                ;;
-            --log-level|-l)
-                if [[ -n "$2" && "$2" != -* ]]; then
-                    LOG_LEVEL="$2"
-                    debug_print "LOG_LEVEL set to '$LOG_LEVEL'." "$debug"
-                    shift 2 # Shift past the option and its value
-                else
-                    printf "Option '%s' requires an argument.\n" "$1"
-                    debug_end "$debug" # Next line must be a return/print/exit out of function
-                    exit 1
-                fi
-                ;;
-            --terse|-t)
-                TERSE="true"
-                debug_print "TERSE set to 'true'" "$debug"
-                shift
-                ;;
-            --console|-c)
-                USE_CONSOLE="true"
-                debug_print "USE_CONSOLE set to 'true'" "$debug"
-                shift
-                ;;
-            debug)
-                shift
-                ;;
-            *)
-                if [[ -n "${1-}" ]]; then
-                    printf "[ERROR] Unknown option: '%s'\n" "$1" >&2
-                else
-                    printf "[ERROR] No option provided.\n" >&2
-                fi
-                usage "$debug"
-                debug_end "$debug" # Next line must be a return/print/exit out of function # Debug log: function exit
-                exit 1
-                ;;
-        esac
-    done
-
-    # Debug: Final parsed values
-    if [[ "$debug" == "debug" ]]; then
-        printf "[DEBUG] Final parsed values:\n" >&2
-        printf "\t- DRY_RUN='%s'\n\t- LOG_FILE='%s'\n\t- LOG_LEVEL='%s'\n\t- TERSE='%s'\n\t- USE_CONSOLE='%s'\n" \
-            "${DRY_RUN:-false}" "${LOG_FILE:-None}" "${LOG_LEVEL:-None}" "${TERSE:-false}" "${USE_CONSOLE:-false}" >&2
+    # -------------------------------------------------------------------------
+    # @brief Constructs a message based on the presence of the argument.
+    # @details If the argument is provided, a message with the argument value
+    #          is constructed. If no argument is provided, a default message
+    #          is used.
+    # -------------------------------------------------------------------------
+    local message
+    if [[ -n "$argument" ]]; then
+        message="Argument: ${argument}."
+    else
+        message="No arguments."
     fi
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    # -------------------------------------------------------------------------
+    # @brief Print the constructed message.
+    # @details The message is printed using the debug_print function. If the
+    #          debug flag is set, the function outputs the message with debug
+    #          information.
+    # -------------------------------------------------------------------------
+    debug_print "$message" "$debug"
+    retval="$?"
+
+    debug_end "$debug"
+    return "$retval"
+}
+
+# -----------------------------------------------------------------------------
+# @brief Handles the first flag argument.
+# @details This function processes the a flagged argument, constructs a
+#          message based on whether the argument is provided. If an argument
+#          is supplied, it constructs a message with the argument value.
+#          Otherwise, a default message is used. The message is then printed
+#          with the debug_print function, and the status is returned.
+#
+# @param $1 [optional] The first flag argument passed to the function. If not
+#           provided, the function defaults to an empty string.
+# @param $2 [optional] Turns on debug printing if == "debug"
+#
+# @return 0 on success, or the status of the last executed command.
+# -----------------------------------------------------------------------------
+flag_arg_one() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+    local retval=0
+    local argument
+    argument="${1:-}"  # Use the first argument or default to an empty string
+
+    # -------------------------------------------------------------------------
+    # @brief Constructs a message based on the presence of the argument.
+    # @details If the argument is provided, a message with the argument
+    #          value is constructed. If no argument is provided, a default
+    #          message is used.
+    # -------------------------------------------------------------------------
+    local message
+    if [[ -n "$argument" ]]; then
+        message="Argument: ${argument}."
+    else
+        message="No arguments."
+    fi
+
+    # -------------------------------------------------------------------------
+    # @brief Print the constructed message.
+    # @details The message is printed using the debug_print function. If the
+    #          debug flag is set, the function outputs the message with debug
+    #          information.
+    # -------------------------------------------------------------------------
+    debug_print "$message" "$debug"
+    retval="$?"
+
+    debug_end "$debug"
+    return "$retval"
+}
+
+# -----------------------------------------------------------------------------
+# @brief Handles the first flag argument.
+# @details This function processes the a flagged argument, constructs a
+#          message based on whether the argument is provided. If an argument
+#          is supplied, it constructs a message with the argument value.
+#          Otherwise, a default message is used. The message is then printed
+#          with the debug_print function, and the status is returned.
+#
+# @param $1 [optional] The first flag argument passed to the function. If not
+#           provided, the function defaults to an empty string.
+# @param $2 [optional] Turns on debug printing if == "debug"
+#
+# @return 0 on success, or the status of the last executed command.
+# -----------------------------------------------------------------------------
+flag_arg_two() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+    local retval=0
+    local argument
+    argument="${1:-}"  # Use the first argument or default to an empty string
+
+    # -------------------------------------------------------------------------
+    # @brief Constructs a message based on the presence of the argument.
+    # @details If the argument is provided, a message with the argument value
+    #          is constructed. If no argument is provided, a default message
+    #          is used.
+    # -------------------------------------------------------------------------
+    local message
+    if [[ -n "$argument" ]]; then
+        message="Argument: ${argument}."
+    else
+        message="No arguments."
+    fi
+
+    # -------------------------------------------------------------------------
+    # @brief Print the constructed message.
+    # @details The message is printed using the debug_print function. If the
+    #          debug flag is set, the function outputs the message with debug
+    #          information.
+    # -------------------------------------------------------------------------
+    debug_print "$message" "$debug"
+    retval="$?"
+
+    debug_end "$debug"
+    return "$retval"
+}
+
+# -----------------------------------------------------------------------------
+# @brief Handles the first flag argument.
+# @details This function processes the a flagged argument, constructs a
+#          message based on whether the argument is provided. If an argument
+#          is supplied, it constructs a message with the argument value.
+#          Otherwise, a default message is used. The message is then printed
+#          with the debug_print function, and the status is returned.
+#
+# @param $1 [optional] The first flag argument passed to the function. If not
+#           provided, the function defaults to an empty string.
+# @param $2 [optional] Turns on debug printing if == "debug"
+#
+# @return 0 on success, or the status of the last executed command.
+# -----------------------------------------------------------------------------
+flag_arg_tre() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+    local retval=0
+    local argument
+    argument="${1:-}"  # Use the first argument or default to an empty string
+
+    # -------------------------------------------------------------------------
+    # @brief Constructs a message based on the presence of the argument.
+    # @details If the argument is provided, a message with the argument value
+    #          is constructed. If no argument is provided, a default message
+    #          is used.
+    # -------------------------------------------------------------------------
+    local message
+    if [[ -n "$argument" ]]; then
+        message="Argument: ${argument}."
+    else
+        message="No arguments."
+    fi
+
+    # -------------------------------------------------------------------------
+    # @brief Print the constructed message.
+    # @details The message is printed using the debug_print function. If the
+    #          debug flag is set, the function outputs the message with debug
+    #          information.
+    # -------------------------------------------------------------------------
+    debug_print "$message" "$debug"
+    retval="$?"
+
+    debug_end "$debug"
+    return "$retval"
+}
+
+# -----------------------------------------------------------------------------
+# @brief Handles the first flag argument.
+# @details This function processes the a flagged argument, constructs a
+#          message based on whether the argument is provided. If an argument
+#          is supplied, it constructs a message with the argument value.
+#          Otherwise, a default message is used. The message is then printed
+#          with the debug_print function, and the status is returned.
+#
+# @param $1 [optional] The first flag argument passed to the function. If not
+#           provided, the function defaults to an empty string.
+# @param $2 [optional] Turns on debug printing if == "debug"
+#
+# @return 0 on success, or the status of the last executed command.
+# -----------------------------------------------------------------------------
+flag_arg_fwr() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+    local retval=0
+    local argument
+    argument="${1:-}"  # Use the first argument or default to an empty string
+
+    # -------------------------------------------------------------------------
+    # @brief Constructs a message based on the presence of the argument.
+    # @details If the argument is provided, a message with the argument value
+    #          is constructed. If no argument is provided, a default message
+    #          is used.
+    # -------------------------------------------------------------------------
+    local message
+    if [[ -n "$argument" ]]; then
+        message="Argument: ${argument}."
+    else
+        message="No arguments."
+    fi
+
+    # -------------------------------------------------------------------------
+    # @brief Print the constructed message.
+    # @details The message is printed using the debug_print function. If the
+    #          debug flag is set, the function outputs the message with debug
+    #          information.
+    # -------------------------------------------------------------------------
+    debug_print "$message" "$debug"
+    retval="$?"
+
+    debug_end "$debug"
+    return "$retval"
+}
+
+# -----------------------------------------------------------------------------
+# @brief Processes command-line arguments.
+# @details This function processes both word arguments (defined in
+#          `arguments_list`) and flagged options (defined in `options_list`).
+#          It handles complex flags that require a following argument, and
+#          calls the associated functions for each valid argument. If an
+#          invalid argument is encountered, it will trigger the `usage()`
+#          function to display help instructions.
+#
+# @param $@ [optional] Command-line arguments passed to the function.
+# @global arguments_list List of valid word arguments and their associated
+#                        functions.
+# @global options_list List of valid flagged options and their associated
+#                      functions.
+# @global debug_flag Optional debug flag to enable debugging information.
+#
+# @return 0 on success, or the status code of the last executed command.
+# -----------------------------------------------------------------------------
+process_args() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+    local retval=0
+    local args=("$@")
+    local invalid_argument=false
+
+    # -----------------------------------------------------------------------------
+    # @brief Loop through all the arguments passed to the function.
+    # @details This loop iterates through each argument, processing either word
+    #          arguments or flagged options.
+    # -----------------------------------------------------------------------------
+    while (( ${#args[@]} > 0 )); do
+        local current_arg="${args[0]}"
+        local processed_argument=false
+
+        # -----------------------------------------------------------------------------
+        # @brief Skip empty arguments.
+        # -----------------------------------------------------------------------------
+        if [[ -z "${current_arg}" ]]; then
+            args=("${args[@]:1}")  # Remove the blank argument and continue
+            continue
+        fi
+
+        # -----------------------------------------------------------------------------
+        # @brief Process flagged options (starting with "-").
+        # -----------------------------------------------------------------------------
+        if [[ "${current_arg:0:1}" == "-" ]]; then
+            # Loop through all flagged options (options_list)
+            for entry in "${options_list[@]}"; do
+                local flag
+                local complex_flag
+                local function_name
+                local description
+                local exit_flag
+                flag=$(echo "$entry" | cut -d' ' -f1)
+                complex_flag=$(echo "$entry" | cut -d' ' -f2)
+                function_name=$(echo "$entry" | cut -d' ' -f3)
+                description=$(echo "$entry" | cut -d' ' -f4- | rev | cut -d' ' -f2- | rev)
+                exit_flag=$(echo "$entry" | awk '{print $NF}')
+
+                # -----------------------------------------------------------------------------
+                # @brief Split flags and check if current_arg matches.
+                # -----------------------------------------------------------------------------
+                IFS='|' read -ra flag_parts <<< "$flag"  # Split the flag by "|"
+                for part in "${flag_parts[@]}"; do
+                    part=$(echo "$part" | xargs)  # Trim spaces
+
+                    # Check if the current argument matches any of the flags
+                    if [[ "$current_arg" == "$part" ]]; then
+                        # If it's a complex flag, we expect a following argument
+                        if (( complex_flag == 1 )); then
+                            local next_arg
+                            if [[ ${#args[@]} -ge 2 ]]; then
+                                next_arg="${args[1]}"
+                            else
+                                die 1 "Error: Missing argument for flag '$part'."
+                            fi
+
+                            # Call the function with the next argument as a parameter
+                            $function_name "$next_arg" "$debug"
+                            retval="$?"
+
+                            # Remove the processed flag and its argument
+                            args=("${args[@]:2}")
+                            processed_argument=true
+                        else
+                            # Call the function with no arguments
+                            $function_name
+                            retval="$?"
+                            # Remove the processed flag
+                            args=("${args[@]:1}")
+                            processed_argument=true
+                        fi
+
+                        # Exit if exit_flag is set
+                        if (( exit_flag == 1 )); then
+                            debug_end "$debug"
+                            exit_script "$retval"
+                        fi
+                        continue
+                    fi
+                done
+            done
+        elif [[ -n "${current_arg}" ]]; then
+            # -----------------------------------------------------------------------------
+            # @brief Process single-word arguments from arguments_list.
+            # -----------------------------------------------------------------------------
+            for entry in "${arguments_list[@]}"; do
+                local word
+                local function_name
+                local description
+                local exit_flag
+                word=$(echo "$entry" | cut -d' ' -f1)
+                function_name=$(echo "$entry" | cut -d' ' -f2)
+                description=$(echo "$entry" | cut -d' ' -f3- | rev | cut -d' ' -f2- | rev)
+                exit_flag=$(echo "$entry" | awk '{print $NF}')
+
+                # Check if the current argument matches the word argument
+                if [[ "$current_arg" == "$word" ]]; then
+                    # Call the associated function
+                    $function_name "$debug"
+                    retval="$?"
+
+                    # Exit if exit_flag is set
+                    if (( exit_flag == 1 )); then
+                        debug_end "$debug"
+                        exit_script "$retval"
+                    fi
+
+                    # Remove the processed argument from args
+                    args=("${args[@]:1}")
+                    processed_argument=true
+                    break
+                fi
+            done
+        fi
+
+        # -----------------------------------------------------------------------------
+        # @brief Handle invalid arguments by setting the flag.
+        # -----------------------------------------------------------------------------
+        if [[ "$processed_argument" != true ]]; then
+            args=("${args[@]:1}")
+            invalid_argument=true
+            continue
+        fi
+    done
+
+    # -----------------------------------------------------------------------------
+    # @brief If any invalid argument is found, show usage instructions.
+    # -----------------------------------------------------------------------------
+    if [[ "$invalid_argument" == true ]]; then
+        usage
+    fi
+
+    debug_end "$debug"
+    return "$retval"
+}
+
+# -----------------------------------------------------------------------------
+# @brief Prints usage information for the script.
+# @details This function prints out the usage instructions for the script,
+#          including the script name, command-line options, and their
+#          descriptions. The usage of word arguments and flag arguments is
+#          displayed separately. It also handles the optional inclusion of
+#          the `sudo` command based on the `REQUIRE_SUDO` environment variable.
+#          Additionally, it can direct output to either stdout or stderr based
+#          on the second argument.
+#
+# @param $@ [optional] Command-line arguments passed to the function,
+#                      typically used for the debug flag.
+# @global REQUIRE_SUDO If set to "true", the script name will include "sudo"
+#                      in the usage message.
+# @global THIS_SCRIPT The script's name, used for logging.
+#
+# @return 0 on success.
+# -----------------------------------------------------------------------------
+usage() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+    local output_redirect="1"  # Default to stdout (1)
+    local args=()              # Array to hold non-debug arguments
+
+    # -----------------------------------------------------------------------------
+    # @brief Check for the "stderr" argument to redirect output to stderr.
+    # -----------------------------------------------------------------------------
+    for arg in "$@"; do
+        if [[ "$arg" == "stderr" ]]; then
+            output_redirect="2"  # Set to stderr (2)
+            shift
+            break  # Exit the loop as soon as we find "stderr"
+        fi
+    done
+
+    # -----------------------------------------------------------------------------
+    # @brief Check if "sudo" should be appended to the script name based on
+    #        the REQUIRE_SUDO variable.
+    # -----------------------------------------------------------------------------
+    local script_name
+    [[ "${REQUIRE_SUDO:-}" == "true" ]] && script_name+="sudo "
+    script_name+=" ./$THIS_SCRIPT"
+
+    # -----------------------------------------------------------------------------
+    # @brief Print the usage with the correct script name, without including
+    #        redirection.
+    # -----------------------------------------------------------------------------
+    printf "\nUsage: %s [debug] <option1> [<option2> ...]\n\n" "$script_name" >&$output_redirect
+
+    # -----------------------------------------------------------------------------
+    # @brief Word Arguments section
+    # -----------------------------------------------------------------------------
+    printf "Available Options\n\n" >&$output_redirect
+    printf "Word Arguments:\n" >&$output_redirect
+
+    local max_word_len=0
+    # First pass to calculate the maximum lengths of the word arguments
+    for entry in "${arguments_list[@]}"; do
+        local word=$(echo "$entry" | cut -d' ' -f1)
+        local word_len=${#word}
+        if (( word_len > max_word_len )); then
+            max_word_len=$word_len
+        fi
+    done
+
+    # Second pass to print with padded formatting
+    for entry in "${arguments_list[@]}"; do
+        local word=$(echo "$entry" | cut -d' ' -f1)
+        local function=$(echo "$entry" | cut -d' ' -f2)
+        local description=$(echo "$entry" | cut -d' ' -f3- | rev | cut -d' ' -f2- | rev)
+        local exit_flag=$((1 - $(echo "$entry" | awk '{print $NF}')))  # Invert the value
+
+        printf "  %$(($max_word_len))s: %s\n" "$word" "$description" >&$output_redirect
+    done
+    printf "\n" >&$output_redirect
+
+    # -----------------------------------------------------------------------------
+    # @brief Flag Arguments section
+    # -----------------------------------------------------------------------------
+    printf "Flag Arguments:\n" >&$output_redirect
+    local max_flag_len=0
+    for entry in "${options_list[@]}"; do
+        local flag=$(echo "$entry" | cut -d' ' -f1)
+        local flag_len=${#flag}
+        if (( flag_len > max_flag_len )); then
+            max_flag_len=$flag_len
+        fi
+    done
+
+    # Second pass to print with padded formatting for flag arguments
+    for entry in "${options_list[@]}"; do
+        local flag=$(echo "$entry" | cut -d' ' -f1)
+        local complex_flag=$(echo "$entry" | cut -d' ' -f2)
+        local function=$(echo "$entry" | cut -d' ' -f3)
+        local description=$(echo "$entry" | cut -d' ' -f4- | rev | cut -d' ' -f2- | rev)
+        local exit_flag=$((1 - $(echo "$entry" | awk '{print $NF}')))  # Invert the value
+
+        printf "  %$(($max_flag_len))s: %s\n" "$(echo "$flag" | tr '|' ' ')" "$description" >&$output_redirect
+    done
+
+    debug_end "$debug"
     return 0
 }
 
@@ -4851,6 +5463,7 @@ _main() {
     # Run installer steps
     start_script "$debug"              # Start the script with instructions
     set_time "$debug"                  # Offer to change timezone if default
+    process_args "$@" "$debug"         # Process command line argments
     handle_apt_packages "$debug"       # Perform APT maintenance and install/update packages
     finish_script "$debug"             # Finish the script with final instructions
 
@@ -4869,6 +5482,14 @@ _main() {
 # @return Returns the status code from `_main`.
 # -----------------------------------------------------------------------------
 main() { _main "$@"; return "$?"; }
+
+# -----------------------------------------------------------------------------
+# @brief Traps the `EXIT` signal to invoke the `egress` function.
+# @details Ensures the `egress` function is called automatically when the shell
+#          exits. This enables proper session cleanup and displays session
+#          statistics to the user.
+# -----------------------------------------------------------------------------
+trap egress EXIT
 
 debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 main "$@"
