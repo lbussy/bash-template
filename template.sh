@@ -19,8 +19,8 @@ set +o noclobber
 # - Git repository context retrieval and semantic versioning utilities.
 #
 # @author Lee Bussy
-# @date December 21, 2024
-# @version 1.0.0
+# @date January 03, 2025
+# @version 1.2.0
 #
 # @copyright
 # This script is open-source and can be modified or distributed under the terms
@@ -130,7 +130,7 @@ trap_error() {
 #          `${BASH_SOURCE[0]}` (using `basename`). If that fails, it defaults
 #          to `FALLBACK_SCRIPT_NAME`.
 # -----------------------------------------------------------------------------
-declare FALLBACK_SCRIPT_NAME="${FALLBACK_SCRIPT_NAME:-debug_print.sh}"
+declare FALLBACK_SCRIPT_NAME="${FALLBACK_SCRIPT_NAME:-template.sh}"
 if [[ -z "${THIS_SCRIPT:-}" ]]; then
     if [[ -n "${BASH_SOURCE[0]:-}" && "${BASH_SOURCE[0]:-}" != "bash" ]]; then
         # Use BASH_SOURCE[0] if it is available and not "bash"
@@ -222,8 +222,8 @@ declare IS_REPO="${IS_REPO:-false}"  # Default to "false".
 declare REPO_ORG="${REPO_ORG:-lbussy}"
 declare REPO_NAME="${REPO_NAME:-bash-template}"
 declare REPO_BRANCH="${REPO_BRANCH:-main}"
-declare GIT_TAG="${GIT_TAG:-0.0.1}"
-declare SEM_VER="${GIT_TAG:-0.0.1}"
+declare GIT_TAG="${GIT_TAG:-1.2.0}"
+declare SEM_VER="${GIT_TAG:-1.2.0}"
 declare LOCAL_REPO_DIR="${LOCAL_REPO_DIR:-}"
 declare LOCAL_WWW_DIR="${LOCAL_WWW_DIR:-}"
 declare LOCAL_SCRIPTS_DIR="${LOCAL_SCRIPTS_DIR:-}"
@@ -237,6 +237,12 @@ declare -A MENU_ITEMS       # Associative array of menu items
 declare -a MAIN_MENU        # Array defining the main menu screen
 declare -a SUB_MENU         # Array defining the sub-menu screen
 declare MENU_HEADER="${MENU_HEADER:-Menu}"  # Global menu header
+
+# -----------------------------------------------------------------------------
+# Declare Menu Variables
+# -----------------------------------------------------------------------------
+declare ARGUMENTS_LIST=()   # List of word arguments for command line parsing
+declare OPTIONS_LIST=()     # List of -f--fl arguemtns for command line parsing
 
 # -----------------------------------------------------------------------------
 # @var GIT_DIRS
@@ -606,34 +612,6 @@ declare -ar ENV_VARS_BASE=(
 )
 
 # -----------------------------------------------------------------------------
-# @var ENV_VARS
-# @type array
-# @brief Final list of required environment variables.
-# @details This array extends `ENV_VARS_BASE` to include additional variables
-#          required under specific conditions. If the script requires root
-#          privileges (`REQUIRE_SUDO=true`), the `SUDO_USER` variable is added
-#          dynamically during runtime. Otherwise, it inherits only the base
-#          environment variables.
-#
-#          - `SUDO_USER`: Identifies the user who invoked the script using `sudo`.
-#
-# @note Ensure `ENV_VARS_BASE` is properly defined before constructing `ENV_VARS`.
-#
-# @example
-# for var in "${ENV_VARS[@]}"; do
-#     if [[ -z "${!var}" ]]; then
-#         echo "Error: Required environment variable '$var' is not set."
-#         exit 1
-#     fi
-# done
-# -----------------------------------------------------------------------------
-if [[ "$REQUIRE_SUDO" == true ]]; then
-    readonly -a ENV_VARS=("${ENV_VARS_BASE[@]}" "SUDO_USER")
-else
-    readonly -a ENV_VARS=("${ENV_VARS_BASE[@]}")
-fi
-
-# -----------------------------------------------------------------------------
 # @var COLUMNS
 # @brief Terminal width in columns.
 # @details The `COLUMNS` variable represents the width of the terminal in
@@ -721,7 +699,7 @@ readonly APT_PACKAGES=(
 readonly WARN_STACK_TRACE="${WARN_STACK_TRACE:-false}"  # Default to false if not set.
 
 ############
-### Common Functions
+### Template Functions
 ############
 
 # -----------------------------------------------------------------------------
@@ -737,110 +715,9 @@ readonly WARN_STACK_TRACE="${WARN_STACK_TRACE:-false}"  # Default to false if no
 # @note The function uses `history | wc -l` to count the commands executed in
 #       the current session and `date` to capture the session end time.
 # -----------------------------------------------------------------------------
-function egress() {
+egress() {
     # TODO:
     true
-}
-
-# -----------------------------------------------------------------------------
-# @brief Wraps a message into lines with ellipses for overflow or continuation.
-# @details This function splits the message into lines, appending an ellipsis
-#          for overflowed lines and prepending it for continuation lines. The
-#          primary and secondary messages are processed separately and combined
-#          with a delimiter.
-#
-# @param $1 [required] The message string to wrap.
-# @param $2 [required] Maximum width of each line (numeric).
-# @param $3 [optional] The secondary message string to include (defaults to
-#                      an empty string).
-#
-# @global None.
-#
-# @throws None.
-#
-# @return A single string with wrapped lines and ellipses added as necessary.
-#         The primary and secondary messages are separated by a delimiter.
-#
-# @example
-# wrapped=$(wrap_messages "This is a long message" 50)
-# echo "$wrapped"
-# -----------------------------------------------------------------------------
-wrap_messages() {
-    local line_width=$1 # Maximum width of each line
-    local primary=$2    # Primary message string
-    local secondary=$3  # Secondary message string
-    local delimiter="␞" # ASCII delimiter (code 30) for separating messages
-
-    # -------------------------------------------------------------------------
-    # @brief Wraps a message into lines with ellipses for overflow or
-    #        continuation.
-    # @details Splits the message into lines, appending an ellipsis for
-    #          overflowed lines and prepending it for continuation lines.
-    #
-    # @param $1 [required] The message string to wrap.
-    # @param $2 [required] Maximum width of each line (numeric).
-    #
-    # @global None.
-    #
-    # @throws None.
-    #
-    # @return A single string with wrapped lines, ellipses added as necessary.
-    #
-    # @example
-    # wrapped=$(wrap_message "This is a long message" 50)
-    # echo "$wrapped"
-    # -------------------------------------------------------------------------
-    local wrap_message
-    wrap_message() {
-        local message=$1        # Input message to wrap
-        local width=$2          # Maximum width of each line
-        local result=()         # Array to store wrapped lines
-        local adjusted_width=$((width - 2))  # Adjust width for ellipses
-
-        # Process message line-by-line
-        while IFS= read -r line; do
-            result+=("$line")
-        done <<< "$(printf "%s\n" "$message" | fold -s -w "$adjusted_width")"
-
-        # Add ellipses to wrapped lines
-        for ((i = 0; i < ${#result[@]}; i++)); do
-            if ((i == 0)); then
-                # Append ellipsis to the first line
-                result[i]="${result[i]% }…"
-            elif ((i == ${#result[@]} - 1)); then
-                # Prepend ellipsis to the last line
-                result[i]="…${result[i]}"
-            else
-                # Add ellipses to both ends of middle lines
-                result[i]="…${result[i]% }…"
-            fi
-        done
-
-        # Return the wrapped lines as a single string
-        printf "%s\n" "${result[@]}"
-    }
-
-    # Process the primary message
-    local overflow=""          # Stores overflow lines from the primary message
-    if [[ ${#primary} -gt $line_width ]]; then
-        local wrapped_primary  # Temporarily stores the wrapped primary message
-        wrapped_primary=$(wrap_message "$primary" "$line_width")
-        overflow=$(printf "%s\n" "$wrapped_primary" | tail -n +2)
-        primary=$(printf "%s\n" "$wrapped_primary" | head -n 1)
-    fi
-
-    # Process the secondary message
-    if [[ ${#secondary} -gt $line_width ]]; then
-        secondary=$(wrap_message "$secondary" "$line_width")
-    fi
-
-    # Return the combined messages
-    printf "%s%b%s%b%s" /
-        "$primary" /
-        "$delimiter" /
-        "$overflow" /
-        "$delimiter" /
-        "$secondary"
 }
 
 # -----------------------------------------------------------------------------
@@ -998,151 +875,6 @@ debug_end() {
 }
 
 # -----------------------------------------------------------------------------
-# @brief Pads a number with leading spaces to achieve the desired width.
-# @details This function takes a number and a specified width, and returns the
-#          number formatted with leading spaces if necessary. The number is
-#          guaranteed to be a valid non-negative integer, and the width is
-#          checked to ensure it is a positive integer. If "debug" is passed as
-#          the second argument, it defaults the width to 4 and provides debug
-#          information.
-#
-# @param $1 [required] The number to be padded (non-negative integer).
-# @param $2 [optional] The width of the output (defaults to 4 if not provided).
-#
-# @return 0 on success.
-#
-# @example
-# pad_with_spaces 42 6  # Output: "   42"
-# pad_with_spaces 123 5  # Output: "  123"
-# -----------------------------------------------------------------------------
-pad_with_spaces() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    # Declare locals
-    local number="${1:-0}"  # Input number (mandatory)
-    local width="${2:-4}"   # Optional width (default is 4)
-
-    # If the second parameter is "debug", adjust the arguments
-    if [[ "$width" == "debug" ]]; then
-        debug="$width"
-        width=4  # Default width to 4 if "debug" was passed in place of width
-    fi
-
-    # Validate input for the number
-    if [[ -z "${number:-}" || ! "$number" =~ ^[0-9]+$ ]]; then
-        die 1 "Input must be a valid non-negative integer."
-    fi
-
-    # Ensure the width is a positive integer
-    if [[ ! "$width" =~ ^[0-9]+$ || "$width" -lt 1 ]]; then
-        die 1 "Error: Width must be a positive integer."
-    fi
-
-    # Strip leading zeroes to prevent octal interpretation
-    number=$((10#$number))  # Forces the number to be interpreted as base-10
-
-    # Format the number with leading spaces and return it as a string
-    printf "%${width}d\n" "$number"
-
-    debug_end "$debug"  # Next line must be a return/print/exit out of function
-    return 0
-}
-
-# -----------------------------------------------------------------------------
-# @brief Wraps primary and secondary messages with ellipses for overflow lines.
-# @details Ensures that the primary and secondary messages fit within the
-#          specified line width. If a line overflows, ellipses are appended
-#          (or prepended for continuation lines). The processed messages are
-#          returned as a single string, separated by an ASCII delimiter (␞).
-#
-# @param $1 [required] Maximum width of each line (numeric).
-# @param $2 [required] Primary message string.
-# @param $3 [required] Secondary message string.
-#
-# @global None.
-#
-# @throws None.
-#
-# @return A single string containing the formatted primary, overflow, and
-#         secondary messages, separated by the ASCII delimiter ␞.
-#
-# @example
-# result=$(wrap_messages 50 "Primary message" "Secondary message")
-# echo "$result"
-# -----------------------------------------------------------------------------
-wrap_messages() {
-    local line_width=$1        # Maximum width of each line
-    local primary=$2           # Primary message string
-    local secondary=$3         # Secondary message string
-    local delimiter="␞"        # ASCII delimiter (code 30) for separating messages
-
-    # -----------------------------------------------------------------------------
-    # @brief Wraps a message into lines with ellipses for overflow or continuation.
-    # @details Splits the message into lines, appending an ellipsis for overflowed
-    #          lines and prepending it for continuation lines.
-    #
-    # @param $1 [required] The message string to wrap.
-    # @param $2 [required] Maximum width of each line (numeric).
-    #
-    # @global None.
-    #
-    # @throws None.
-    #
-    # @return A single string with wrapped lines, ellipses added as necessary.
-    #
-    # @example
-    # wrapped=$(wrap_message "This is a long message" 50)
-    # echo "$wrapped"
-    # -----------------------------------------------------------------------------
-    local wrap_message
-    wrap_message() {
-        local message=$1        # Input message to wrap
-        local width=$2          # Maximum width of each line
-        local result=()         # Array to store wrapped lines
-        local adjusted_width=$((width - 2))  # Adjust width for ellipses
-
-        # Process message line-by-line
-        while IFS= read -r line; do
-            result+=("$line")
-        done <<< "$(printf "%s\n" "$message" | fold -s -w "$adjusted_width")"
-
-        # Add ellipses to wrapped lines
-        for ((i = 0; i < ${#result[@]}; i++)); do
-            if ((i == 0)); then
-                # Append ellipsis to the first line
-                result[i]="${result[i]% }…"
-            elif ((i == ${#result[@]} - 1)); then
-                # Prepend ellipsis to the last line
-                result[i]="…${result[i]}"
-            else
-                # Add ellipses to both ends of middle lines
-                result[i]="…${result[i]% }…"
-            fi
-        done
-
-        # Return the wrapped lines as a single string
-        printf "%s\n" "${result[@]}"
-    }
-
-    # Process the primary message
-    local overflow=""          # Stores overflow lines from the primary message
-    if [[ ${#primary} -gt $line_width ]]; then
-        local wrapped_primary  # Temporarily stores the wrapped primary message
-        wrapped_primary=$(wrap_message "$primary" "$line_width")
-        overflow=$(printf "%s\n" "$wrapped_primary" | tail -n +2)
-        primary=$(printf "%s\n" "$wrapped_primary" | head -n 1)
-    fi
-
-    # Process the secondary message
-    if [[ ${#secondary} -gt $line_width ]]; then
-        secondary=$(wrap_message "$secondary" "$line_width")
-    fi
-
-    # Return the combined messages
-    printf "%s%b%s%b%s" "$primary" "$delimiter" "$overflow" "$delimiter" "$secondary"
-}
-
-# -----------------------------------------------------------------------------
 # @brief Prints a stack trace with optional formatting and a message.
 # @details This function generates and displays a formatted stack trace for
 #          debugging purposes. It includes a log level and optional details,
@@ -1201,8 +933,7 @@ stack_trace() {
     # Get the current function name in title case
     local raw_function_name="${FUNCNAME[0]}"
     local function_name
-    function_name="$(echo "$raw_function_name" | /
-        sed -E 's/_/ /g; s/\b(.)/\U\1/g; s/(\b[A-Za-z])([A-Za-z]*)/\1\L\2/g')"
+    function_name="$(echo "$raw_function_name" | sed -E 's/_/ /g; s/\b(.)/\U\1/g; s/(\b[A-Za-z])([A-Za-z]*)/\1\L\2/g')"
 
     # -------------------------------------------------------------------------
     # @brief Determines if a function should be skipped in the stack trace.
@@ -1256,9 +987,9 @@ stack_trace() {
         fi
 
         # Prepend the formatted stack entry to reverse the order
-        displayed_stack=("$(printf "%s|%s" /
-            "$func()" /
-            "$line")" /
+        displayed_stack=("$(printf "%s|%s" \
+            "$func()" \
+            "$line")" \
             "${displayed_stack[@]}")
     done
 
@@ -1305,18 +1036,17 @@ stack_trace() {
     local header_l header_r
     header_l="$(printf '%*s' "$dash_count" | tr ' ' "$char")"
     header_r="$header_l"
-    [[ $(( (width - ${#function_name}) % 2 )) -eq 1 ]] && /
-        header_r="${header_r}${char}"
-    local header=$(printf "%b%s%b %b%b%s%b %b%s%b" /
-        "${color}" /
-        "${header_l}" /
-        "${reset}" /
-        "${color}" /
-        "${bold}" /
-        "${function_name}" /
-        "${reset}" /
-        "${color}" /
-        "${header_r}" /
+    [[ $(( (width - ${#function_name}) % 2 )) -eq 1 ]] && header_r="${header_r}${char}"
+    local header=$(printf "%b%s%b %b%b%s%b %b%s%b" \
+        "${color}" \
+        "${header_l}" \
+        "${reset}" \
+        "${color}" \
+        "${bold}" \
+        "${function_name}" \
+        "${reset}" \
+        "${color}" \
+        "${header_r}" \
         "${reset}")
 
     # Create footer
@@ -1348,14 +1078,14 @@ stack_trace() {
     # Print the displayed stack in reverse order
     for ((i = ${#displayed_stack[@]} - 1, idx = 0; i >= 0; i--, idx++)); do
         IFS='|' read -r func line <<< "${displayed_stack[i]}"
-        printf "%b%*s [%d] Function: %-*s Line: %4s%b\n" /
-            "${color}" /
-            "$indent" /
-            ">" /
-            "$idx" /
-            "$((longest_length + 2))" /
-            "$func" /
-            "$line" /
+        printf "%b%*s [%d] Function: %-*s Line: %4s%b\n" \
+            "${color}" \
+            "$indent" \
+            ">" \
+            "$idx" \
+            "$((longest_length + 2))" \
+            "$func" \
+            "$line" \
             "${reset}"
     done
 
@@ -1579,14 +1309,14 @@ die() {
     format_prefix() {
         local color=$1
         local label=$2
-        printf "%b%s%b %b[%s:%s:%s]%b " /
-            "${bold}${color}" /
-            "$label" /
-            "${reset}" /
-            "${bold}" /
-            "$script" /
-            "$func_name" /
-            "$caller_line" /
+        printf "%b%s%b %b[%s:%s:%s]%b " \
+            "${bold}${color}" \
+            "${label}" \
+            "${reset}" \
+            "${bold}" \
+            "${script}" \
+            "${func_name}" \
+            "${caller_line}" \
             "${reset}"
     }
 
@@ -1658,6 +1388,158 @@ die() {
 }
 
 # -----------------------------------------------------------------------------
+# @brief Pads a number with leading spaces to achieve the desired width.
+# @details This function takes a number and a specified width, and returns the
+#          number formatted with leading spaces if necessary. The number is
+#          guaranteed to be a valid non-negative integer, and the width is
+#          checked to ensure it is a positive integer. If "debug" is passed as
+#          the second argument, it defaults the width to 4 and provides debug
+#          information.
+#
+# @param $1 [required] The number to be padded (non-negative integer).
+# @param $2 [optional] The width of the output (defaults to 4 if not provided).
+#
+# @return 0 on success.
+#
+# @example
+# pad_with_spaces 42 6  # Output: "   42"
+# pad_with_spaces 123 5  # Output: "  123"
+# -----------------------------------------------------------------------------
+pad_with_spaces() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    # Declare locals
+    local number="${1:-0}"  # Input number (mandatory)
+    local width="${2:-4}"   # Optional width (default is 4)
+
+    # If the second parameter is "debug", adjust the arguments
+    if [[ "$width" == "debug" ]]; then
+        debug="$width"
+        width=4  # Default width to 4 if "debug" was passed in place of width
+    fi
+
+    # Validate input for the number
+    if [[ -z "${number:-}" || ! "$number" =~ ^[0-9]+$ ]]; then
+        die 1 "Input must be a valid non-negative integer."
+    fi
+
+    # Ensure the width is a positive integer
+    if [[ ! "$width" =~ ^[0-9]+$ || "$width" -lt 1 ]]; then
+        die 1 "Error: Width must be a positive integer."
+    fi
+
+    # Strip leading zeroes to prevent octal interpretation
+    number=$((10#$number))  # Forces the number to be interpreted as base-10
+
+    # Format the number with leading spaces and return it as a string
+    printf "%${width}d\n" "$number"
+
+    debug_end "$debug"  # Next line must be a return/print/exit out of function
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# @brief Wraps a message into lines with ellipses for overflow or continuation.
+# @details This function splits the message into lines, appending an ellipsis
+#          for overflowed lines and prepending it for continuation lines. The
+#          primary and secondary messages are processed separately and combined
+#          with a delimiter.
+#
+# @param $1 [required] The message string to wrap.
+# @param $2 [required] Maximum width of each line (numeric).
+# @param $3 [optional] The secondary message string to include (defaults to
+#                      an empty string).
+#
+# @global None.
+#
+# @throws None.
+#
+# @return A single string with wrapped lines and ellipses added as necessary.
+#         The primary and secondary messages are separated by a delimiter.
+#
+# @example
+# wrapped=$(wrap_messages "This is a long message" 50)
+# echo "$wrapped"
+# -----------------------------------------------------------------------------
+wrap_messages() {
+    local line_width=$1 # Maximum width of each line
+    local primary=$2    # Primary message string
+    local secondary=$3  # Secondary message string
+    local delimiter="␞" # ASCII delimiter (code 30) for separating messages
+
+    # -------------------------------------------------------------------------
+    # @brief Wraps a message into lines with ellipses for overflow or
+    #        continuation.
+    # @details Splits the message into lines, appending an ellipsis for
+    #          overflowed lines and prepending it for continuation lines.
+    #
+    # @param $1 [required] The message string to wrap.
+    # @param $2 [required] Maximum width of each line (numeric).
+    #
+    # @global None.
+    #
+    # @throws None.
+    #
+    # @return A single string with wrapped lines, ellipses added as necessary.
+    #
+    # @example
+    # wrapped=$(wrap_message "This is a long message" 50)
+    # echo "$wrapped"
+    # -------------------------------------------------------------------------
+    local wrap_message
+    wrap_message() {
+        local message=$1        # Input message to wrap
+        local width=$2          # Maximum width of each line
+        local result=()         # Array to store wrapped lines
+        local adjusted_width=$((width - 2))  # Adjust width for ellipses
+
+        # Process message line-by-line
+        while IFS= read -r line; do
+            result+=("$line")
+        done <<< "$(printf "%s\n" "$message" | fold -s -w "$adjusted_width")"
+
+        # Add ellipses to wrapped lines
+        for ((i = 0; i < ${#result[@]}; i++)); do
+            if ((i == 0)); then
+                # Append ellipsis to the first line
+                result[i]="${result[i]% }…"
+            elif ((i == ${#result[@]} - 1)); then
+                # Prepend ellipsis to the last line
+                result[i]="…${result[i]}"
+            else
+                # Add ellipses to both ends of middle lines
+                result[i]="…${result[i]% }…"
+            fi
+        done
+
+        # Return the wrapped lines as a single string
+        printf "%s\n" "${result[@]}"
+    }
+
+    # Process the primary message
+    local overflow=""          # Stores overflow lines from the primary message
+    if [[ ${#primary} -gt $line_width ]]; then
+        local wrapped_primary  # Temporarily stores the wrapped primary message
+        wrapped_primary=$(wrap_message "$primary" "$line_width")
+        overflow=$(printf "%s\n" "$wrapped_primary" | tail -n +2)
+        primary=$(printf "%s\n" "$wrapped_primary" | head -n 1)
+    fi
+
+    # Process the secondary message
+    if [[ ${#secondary} -gt $line_width ]]; then
+        secondary=$(wrap_message "$secondary" "$line_width")
+    fi
+
+    # Return the combined messages
+    printf "%s%b%s%b%s" \
+        "$primary" \
+        "$delimiter" \
+        "$overflow" \
+        "$delimiter" \
+        "$secondary"
+}
+
+# -----------------------------------------------------------------------------
 # @brief Add a dot (`.`) at the beginning of a string if it's missing.
 # @details This function ensures the input string starts with a leading dot.
 #          If the input string is empty, the function logs a warning and returns
@@ -1674,7 +1556,7 @@ die() {
 # add_dot ""          # Logs a warning and returns an error.
 # -----------------------------------------------------------------------------
 add_dot() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local input=${1:-}  # Input string to process
 
@@ -1783,7 +1665,7 @@ add_period() {
 # remove_period ""          # Logs an error and returns an error code.
 # -----------------------------------------------------------------------------
 remove_period() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local input=${1:-}  # Input string to process
 
@@ -1820,7 +1702,7 @@ remove_period() {
 # add_slash ""                    # Logs an error and returns an error code.
 # -----------------------------------------------------------------------------
 add_slash() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local input="$1"  # Input string to process
 
@@ -1857,7 +1739,7 @@ add_slash() {
 # remove_slash ""                     # Logs an error and returns an error code.
 # -----------------------------------------------------------------------------
 remove_slash() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local input="$1"  # Input string to process
 
@@ -1886,7 +1768,7 @@ remove_slash() {
 # pause
 # -----------------------------------------------------------------------------
 pause() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     printf "Press any key to continue.\n"
     read -n 1 -sr key < /dev/tty || true
@@ -1919,7 +1801,7 @@ pause() {
 # -----------------------------------------------------------------------------
 # shellcheck disable=2329
 print_system() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     # Declare local variables
     local system_name
@@ -1946,7 +1828,7 @@ print_system() {
 # -----------------------------------------------------------------------------
 # @brief Print the script version and optionally log it.
 # @details This function displays the version of the script stored in the global
-#          variable `SEM_VER`. If called by `parse_args`, it uses `printf` to
+#          variable `SEM_VER`. If called by `process_args`, it uses `printf` to
 #          display the version; otherwise, it logs the version using `logI`.
 #          If the debug flag is set to "debug," additional debug information
 #          will be printed.
@@ -1963,12 +1845,12 @@ print_system() {
 # print_version debug
 # -----------------------------------------------------------------------------
 print_version() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     # Check the name of the calling function
     local caller="${FUNCNAME[1]}"
 
-    if [[ "$caller" == "parse_args" ]]; then
+    if [[ "$caller" == "process_args" ]]; then
         printf "%s: version %s\n" "$THIS_SCRIPT" "$SEM_VER" # Display the script name and version
     else
         logI "Running $(repo_to_title_case "$REPO_NAME")'s '$THIS_SCRIPT', version $SEM_VER" # Log the script name and version
@@ -2004,7 +1886,7 @@ print_version() {
 #         execution context.
 # -----------------------------------------------------------------------------
 determine_execution_context() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local script_path   # Full path of the script
     local current_dir   # Temporary variable to traverse directories
@@ -2089,7 +1971,7 @@ determine_execution_context() {
 # @return None
 # -----------------------------------------------------------------------------
 handle_execution_context() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     # Call determine_execution_context and capture its output
     determine_execution_context "$debug"
@@ -2168,7 +2050,7 @@ handle_execution_context() {
 # enforce_sudo debug
 # -----------------------------------------------------------------------------
 enforce_sudo() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     if [[ "$REQUIRE_SUDO" == true ]]; then
         if [[ "$EUID" -eq 0 && -n "$SUDO_USER" && "$SUDO_COMMAND" == *"$0"* ]]; then
@@ -2188,7 +2070,12 @@ enforce_sudo() {
                   "Please re-run it using 'sudo $THIS_SCRIPT'."
         fi
     fi
-    debug_print "Function parameters:\n\t- REQUIRE_SUDO='$REQUIRE_SUDO'\n\t- EUID='$EUID'\n\t- SUDO_USER='$SUDO_USER'\n\t- SUDO_COMMAND='$SUDO_COMMAND'" "$debug"
+
+    debug_print "Function parameters:" \
+        "\n\t- REQUIRE_SUDO='${REQUIRE_SUDO:-(not set)}'" \
+        "\n\t- EUID='$EUID'" \
+        "\n\t- SUDO_USER='${SUDO_USER:-(not set)}'" \
+        "\n\t- SUDO_COMMAND='${SUDO_COMMAND:-(not set)}'" "$debug"
 
     debug_end "$debug" # Next line must be a return/print/exit out of function
     return 0
@@ -2211,7 +2098,7 @@ enforce_sudo() {
 # validate_depends debug
 # -----------------------------------------------------------------------------
 validate_depends() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     # Declare local variables
     local missing=0  # Counter for missing dependencies
@@ -2256,7 +2143,7 @@ validate_depends() {
 # validate_sys_accs debug
 # -----------------------------------------------------------------------------
 validate_sys_accs() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     # Declare local variables
     local missing=0  # Counter for missing or unreadable files
@@ -2301,7 +2188,7 @@ validate_sys_accs() {
 # validate_env_vars debug
 # -----------------------------------------------------------------------------
 validate_env_vars() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     # Declare local variables
     local missing=0  # Counter for missing environment variables
@@ -2346,7 +2233,7 @@ validate_env_vars() {
 # check_bash debug
 # -----------------------------------------------------------------------------
 check_bash() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     # Ensure the script is running in a Bash shell
     if [[ -z "${BASH_VERSION:-}" ]]; then
@@ -2377,7 +2264,7 @@ check_bash() {
 # check_sh_ver debug
 # -----------------------------------------------------------------------------
 check_sh_ver() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local required_version="${MIN_BASH_VERSION:-none}"
 
@@ -2424,7 +2311,7 @@ check_sh_ver() {
 # check_bitness debug
 # -----------------------------------------------------------------------------
 check_bitness() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local bitness  # Stores the detected bitness of the system.
 
@@ -2482,7 +2369,7 @@ check_bitness() {
 # check_release debug
 # -----------------------------------------------------------------------------
 check_release() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local ver  # Holds the extracted version ID from /etc/os-release.
 
@@ -2542,7 +2429,7 @@ check_release() {
 # check_arch debug
 # -----------------------------------------------------------------------------
 check_arch() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local detected_model is_supported key full_name model chip this_model this_chip
 
@@ -2639,7 +2526,7 @@ check_arch() {
 # validate_proxy debug
 # -----------------------------------------------------------------------------
 validate_proxy() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     # Check if proxy_url is passed
     local proxy_url=""
@@ -2694,7 +2581,7 @@ validate_proxy() {
 # check_url "http://example.com" "curl" "--silent --head" debug
 # -----------------------------------------------------------------------------
 check_url() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local url="$1"
     local tool="$2"
@@ -2747,7 +2634,7 @@ check_url() {
 # check_internet debug
 # -----------------------------------------------------------------------------
 check_internet() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local primary_url="http://google.com"
     local secondary_url="http://1.1.1.1"
@@ -2845,7 +2732,7 @@ check_internet() {
 # @return None
 # -----------------------------------------------------------------------------
 print_log_entry() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     # Declare local variables at the start of the function
     local timestamp="$1"
@@ -2867,7 +2754,7 @@ print_log_entry() {
 
     # Log to console if required and USE_CONSOLE is true
     if [[ "$USE_CONSOLE" == "true" && ("$LOG_OUTPUT" == "console" || "$LOG_OUTPUT" == "both") ]]; then
-        printf "%b[%s] %s%b\\n" "$color" "$level" "$message" "$RESET"
+        printf "%b[%s]%b %s\\n" "$color" "$level" "$RESET" "$message"
     fi
 
     debug_end "$debug" # Next line must be a return/print/exit out of function
@@ -2890,7 +2777,7 @@ print_log_entry() {
 # prepare_log_context "debug"
 # -----------------------------------------------------------------------------
 prepare_log_context() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local timestamp
     local lineno
@@ -2935,7 +2822,7 @@ prepare_log_context() {
 # log_message "INFO" "This is a message" "debug"
 # -----------------------------------------------------------------------------
 log_message() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     # Ensure the calling function is log_message_with_severity()
     if [[ "${FUNCNAME[1]}" != "log_message_with_severity" ]]; then
@@ -3022,7 +2909,7 @@ log_message() {
 # log_message_with_severity "ERROR" "This is an error message" "Additional details" "debug"
 # -----------------------------------------------------------------------------
 log_message_with_severity() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     # Exit if the calling function is not one of the allowed ones.
     # shellcheck disable=2076
@@ -3122,7 +3009,7 @@ logX() { log_message_with_severity "EXTENDED" "$1" "${2:-}" "${3:-}"; }
 # init_log "debug"  # Ensures log file is created and available for writing with debug output.
 # -----------------------------------------------------------------------------
 init_log() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local scriptname="${THIS_SCRIPT%%.*}"  # Extract script name without extension
     local homepath log_dir fallback_log
@@ -3197,7 +3084,7 @@ init_log() {
 # @return The corresponding terminal value or an empty string if unsupported.
 # -----------------------------------------------------------------------------
 default_color() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     tput "$@" 2>/dev/null || printf "\n"  # Fallback to an empty string on error
 
@@ -3218,7 +3105,7 @@ default_color() {
 # -----------------------------------------------------------------------------
 # shellcheck disable=2329
 generate_terminal_sequence() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local result
     # Execute the command and capture its output, suppressing errors.
@@ -3243,7 +3130,7 @@ generate_terminal_sequence() {
 # init_colors "debug"  # Initializes terminal colors with debug output.
 # -----------------------------------------------------------------------------
 init_colors() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     # General text attributes
     BOLD=$(default_color bold)
@@ -3315,7 +3202,7 @@ init_colors() {
 # generate_separator "heavy"
 # -----------------------------------------------------------------------------
 generate_separator() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     # Normalize separator type to lowercase
     local type="${1,,}"
@@ -3368,7 +3255,7 @@ generate_separator() {
 # validate_log_level          # No debug output
 # -----------------------------------------------------------------------------
 validate_log_level() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     # Ensure LOG_LEVEL is a valid key in LOG_PROPERTIES
     if [[ -z "${LOG_PROPERTIES[$LOG_LEVEL]:-}" ]]; then
@@ -3401,7 +3288,7 @@ validate_log_level() {
 # @return void
 # -----------------------------------------------------------------------------
 setup_log() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     # Initialize terminal colors
     init_colors "$debug"
@@ -3451,7 +3338,7 @@ setup_log() {
 # @return 0 on success, 1 on invalid input.
 # -----------------------------------------------------------------------------
 toggle_console_log() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     # Declare local variables
     local state="${1,,}"      # Convert input to lowercase for consistency
@@ -3504,7 +3391,7 @@ toggle_console_log() {
 # @retval 1 Failure: prints an error message to standard error if the organization cannot be determined.
 # -----------------------------------------------------------------------------
 get_repo_org() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local repo_org
     local url
@@ -3554,7 +3441,7 @@ get_repo_org() {
 # @retval 1 Failure: prints an error message to standard error if the repository name cannot be determined.
 # -----------------------------------------------------------------------------
 get_repo_name() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local repo_name="${REPO_NAME:-}"  # Use existing $REPO_NAME if set
     local url
@@ -3599,7 +3486,7 @@ get_repo_name() {
 # @throws Exits with an error if the repository name is empty.
 # -----------------------------------------------------------------------------
 repo_to_title_case() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local repo_name="${1:-}"  # Input repository name
     local title_case  # Variable to hold the formatted name
@@ -3646,7 +3533,7 @@ repo_to_title_case() {
 #           be determined.
 # -----------------------------------------------------------------------------
 get_repo_branch() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local branch="${REPO_BRANCH:-}"  # Use existing $REPO_BRANCH if set
     local detached_from
@@ -3697,7 +3584,7 @@ get_repo_branch() {
 # @retval 0 Success: the tag name is printed.
 # -----------------------------------------------------------------------------
 get_last_tag() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local tag
 
@@ -3739,7 +3626,7 @@ get_last_tag() {
 # @retval 1 Failure: prints an error message to standard error if no tag is provided.
 # -----------------------------------------------------------------------------
 is_sem_ver() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local tag="${1:-}"
 
@@ -3777,7 +3664,7 @@ is_sem_ver() {
 # @return The number of commits since the tag, or 0 if the tag does not exist.
 # -----------------------------------------------------------------------------
 get_num_commits() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local tag="${1:-}"
 
@@ -3809,7 +3696,7 @@ get_num_commits() {
 # @retval 1 Failure: prints an error message to standard error if unable to retrieve the hash.
 # -----------------------------------------------------------------------------
 get_short_hash() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local short_hash
     short_hash=$(git rev-parse --short HEAD 2>/dev/null)
@@ -3838,7 +3725,7 @@ get_short_hash() {
 # @retval 1 Failure: prints an error message to standard error if unable to determine the repository state.
 # -----------------------------------------------------------------------------
 get_dirty() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local changes
 
@@ -3877,7 +3764,7 @@ get_dirty() {
 #         Git information cannot be determined.
 # -----------------------------------------------------------------------------
 get_sem_ver() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local tag branch_name num_commits short_hash dirty version_string
 
@@ -3948,7 +3835,7 @@ get_sem_ver() {
 # @return None
 # -----------------------------------------------------------------------------
 get_proj_params() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     if [[ "$USE_LOCAL" == "true" && "$IS_REPO" == "true" ]]; then
         debug_print "Configuring local mode with GitHub repository context." "$debug"
@@ -4066,7 +3953,7 @@ get_proj_params() {
 # download_file "path/to/file.txt" "/local/dir"
 # -----------------------------------------------------------------------------
 download_file() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
     local file_path="$1"
     local dest_dir="$2"
 
@@ -4106,7 +3993,7 @@ download_file() {
 # git_clone
 # -----------------------------------------------------------------------------
 git_clone() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
     local dest_root="$USER_HOME/$REPO_NAME"
     mkdir -p "$dest_root"
 
@@ -4138,7 +4025,7 @@ git_clone() {
 # fetch_tree
 # -----------------------------------------------------------------------------
 fetch_tree() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
     local branch_sha
     branch_sha=$(curl -s "$GIT_API/git/ref/heads/$REPO_BRANCH" | jq -r '.object.sha')
 
@@ -4170,7 +4057,7 @@ fetch_tree() {
 # download_files_in_directories
 # -----------------------------------------------------------------------------
 download_files_in_directories() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
     local dest_root="$USER_HOME/$REPO_NAME"
     logI "Fetching repository tree."
     local tree=$(fetch_tree)
@@ -4207,7 +4094,7 @@ download_files_in_directories() {
 }
 
 ############
-### Common Install Functions
+### Common Script Functions
 ############
 
 # -----------------------------------------------------------------------------
@@ -4227,7 +4114,7 @@ download_files_in_directories() {
 # start_script debug
 # -----------------------------------------------------------------------------
 start_script() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     # Check terse mode
     if [[ "${TERSE:-false}" == "true" ]]; then
@@ -4282,7 +4169,7 @@ start_script() {
 # set_time debug
 # -----------------------------------------------------------------------------
 set_time() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     # Declare local variables
     local need_set=false
@@ -4355,7 +4242,7 @@ set_time() {
 # DRY_RUN=true exec_new_shell "ListFiles" "ls -l" "debug"
 # -----------------------------------------------------------------------------
 exec_new_shell() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local exec_name="${1:-Unnamed Operation}"
     local exec_process="${2:-true}"
@@ -4412,7 +4299,7 @@ exec_new_shell() {
 # exec_command "Test Command" "echo Hello World" "debug"
 # -----------------------------------------------------------------------------
 exec_command() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     local exec_name="$1"
     local exec_process="$2"
@@ -4490,7 +4377,7 @@ exec_command() {
 # handle_apt_packages debug
 # -----------------------------------------------------------------------------
 handle_apt_packages() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     # Check if APT_PACKAGES is empty
     if [[ ${#APT_PACKAGES[@]} -eq 0 ]]; then
@@ -4558,7 +4445,7 @@ handle_apt_packages() {
 # finish_script debug
 # -----------------------------------------------------------------------------
 finish_script() {
-    local debug=$(start_debug "$@"); eval set -- "$(filter_debug "$@")"
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     if [[ "$TERSE" == "true" || "$TERSE" != "true" ]]; then
         logI "Installation complete: $(repo_to_title_case "$REPO_NAME")."
@@ -4623,7 +4510,7 @@ exit_script() {
 }
 
 ############
-### Menu Functions Here
+### Menu Functions
 ############
 
 # -----------------------------------------------------------------------------
@@ -4865,13 +4752,13 @@ do_menu() {
 #          and a flag indicating whether the function should exit after
 #          processing the argument.
 #
-# @var arguments_list
+# @var ARGUMENTS_LIST
 # @brief List of word arguments.
 # @details The list holds the word arguments, their corresponding functions,
 #          descriptions, and exit flags. Each word argument triggers a
 #          specific function when encountered on the command line.
 # -----------------------------------------------------------------------------
-arguments_list=(
+ARGUMENTS_LIST=(
     "word1 word_arg_one Handles word argument one 0"
     "word2 word_arg_two Handles word argument two 1"
 )
@@ -4883,14 +4770,14 @@ arguments_list=(
 #          required, the associated function, a description, and an exit flag
 #          indicating whether the function should terminate after processing.
 #
-# @var options_list
+# @var OPTIONS_LIST
 # @brief List of flagged arguments.
 # @details This list holds the flags (which may include multiple pipe-delimited
 #          options), the associated function to call, whether a secondary
 #          argument is required, and whether the function should exit after
 #          processing.
 # -----------------------------------------------------------------------------
-options_list=(
+OPTIONS_LIST=(
     "-1|--flag_1 0 flag_arg_one Handles flag_arg_one 0"
     "-2|--flag_2 0 flag_arg_two Handles flag_arg_two 1"
     "-3|--flag_3 1 flag_arg_tre Handles flag_arg_tre 0"
@@ -5173,16 +5060,16 @@ flag_arg_fwr() {
 # -----------------------------------------------------------------------------
 # @brief Processes command-line arguments.
 # @details This function processes both word arguments (defined in
-#          `arguments_list`) and flagged options (defined in `options_list`).
+#          `ARGUMENTS_LIST`) and flagged options (defined in `OPTIONS_LIST`).
 #          It handles complex flags that require a following argument, and
 #          calls the associated functions for each valid argument. If an
 #          invalid argument is encountered, it will trigger the `usage()`
 #          function to display help instructions.
 #
 # @param $@ [optional] Command-line arguments passed to the function.
-# @global arguments_list List of valid word arguments and their associated
+# @global ARGUMENTS_LIST List of valid word arguments and their associated
 #                        functions.
-# @global options_list List of valid flagged options and their associated
+# @global OPTIONS_LIST List of valid flagged options and their associated
 #                      functions.
 # @global debug_flag Optional debug flag to enable debugging information.
 #
@@ -5215,8 +5102,8 @@ process_args() {
         # @brief Process flagged options (starting with "-").
         # -----------------------------------------------------------------------------
         if [[ "${current_arg:0:1}" == "-" ]]; then
-            # Loop through all flagged options (options_list)
-            for entry in "${options_list[@]}"; do
+            # Loop through all flagged options (OPTIONS_LIST)
+            for entry in "${OPTIONS_LIST[@]}"; do
                 local flag
                 local complex_flag
                 local function_name
@@ -5273,9 +5160,9 @@ process_args() {
             done
         elif [[ -n "${current_arg}" ]]; then
             # -----------------------------------------------------------------------------
-            # @brief Process single-word arguments from arguments_list.
+            # @brief Process single-word arguments from ARGUMENTS_LIST.
             # -----------------------------------------------------------------------------
-            for entry in "${arguments_list[@]}"; do
+            for entry in "${ARGUMENTS_LIST[@]}"; do
                 local word
                 local function_name
                 local description
@@ -5382,7 +5269,7 @@ usage() {
 
     local max_word_len=0
     # First pass to calculate the maximum lengths of the word arguments
-    for entry in "${arguments_list[@]}"; do
+    for entry in "${ARGUMENTS_LIST[@]}"; do
         local word=$(echo "$entry" | cut -d' ' -f1)
         local word_len=${#word}
         if (( word_len > max_word_len )); then
@@ -5391,7 +5278,7 @@ usage() {
     done
 
     # Second pass to print with padded formatting
-    for entry in "${arguments_list[@]}"; do
+    for entry in "${ARGUMENTS_LIST[@]}"; do
         local word=$(echo "$entry" | cut -d' ' -f1)
         local function=$(echo "$entry" | cut -d' ' -f2)
         local description=$(echo "$entry" | cut -d' ' -f3- | rev | cut -d' ' -f2- | rev)
@@ -5406,7 +5293,7 @@ usage() {
     # -----------------------------------------------------------------------------
     printf "Flag Arguments:\n" >&$output_redirect
     local max_flag_len=0
-    for entry in "${options_list[@]}"; do
+    for entry in "${OPTIONS_LIST[@]}"; do
         local flag=$(echo "$entry" | cut -d' ' -f1)
         local flag_len=${#flag}
         if (( flag_len > max_flag_len )); then
@@ -5415,7 +5302,7 @@ usage() {
     done
 
     # Second pass to print with padded formatting for flag arguments
-    for entry in "${options_list[@]}"; do
+    for entry in "${OPTIONS_LIST[@]}"; do
         local flag=$(echo "$entry" | cut -d' ' -f1)
         local complex_flag=$(echo "$entry" | cut -d' ' -f2)
         local function=$(echo "$entry" | cut -d' ' -f3)
@@ -5430,7 +5317,7 @@ usage() {
 }
 
 ############
-### App-specific Installer Functions Here
+### App-specific Functions Here
 ############
 
 ############
@@ -5438,12 +5325,14 @@ usage() {
 ############
 
 _main() {
-    local debug=$(start_debug "$@"); eval set -- "$(debug_filter "$@")"
+    echo $@
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+    echo $debug
 
     # Check and set up the environment
     handle_execution_context "$debug"  # Get execution context and set environment variables
     get_proj_params "$debug"           # Get project and git parameters
-    parse_args "$@"                    # Parse command-line arguments
+    process_args "$@"                    # Parse command-line arguments
     enforce_sudo "$debug"              # Ensure proper privileges for script execution
     validate_depends "$debug"          # Ensure required dependencies are installed
     validate_sys_accs "$debug"         # Verify critical system files are accessible
@@ -5492,6 +5381,6 @@ main() { _main "$@"; return "$?"; }
 trap egress EXIT
 
 debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-main "$@"
+main "$@" "$debug"
 debug_end "$debug" # Next line must be a return/print/exit out of function
 exit $?
