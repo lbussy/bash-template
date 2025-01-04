@@ -1,141 +1,72 @@
 <!-- omit in toc -->
-# Script Documentation: Bash Template Script
+# Bash Script Template Documentation
 
 <!-- omit in toc -->
 ## Table of Contents
-- [Overview](#overview)
-- [Key Features](#key-features)
+- [Feature Overview](#feature-overview)
 - [Usage and Customization](#usage-and-customization)
   - [Global Declarations](#global-declarations)
-    - [Intended Customization Points - Dynamic](#intended-customization-points---dynamic)
-    - [Read-Only Globals](#read-only-globals)
-    - [Global Placeholders](#global-placeholders)
+  - [Functions](#functions)
 - [Documentation Style](#documentation-style)
 - [Debugging](#debugging)
   - [Debugging Example](#debugging-example)
 - [Exemplar Function](#exemplar-function)
 
-## Overview
+## Feature Overview
+This Bash script serves as a comprehensive template for various Bash scripting projects. It provides advanced functionality for managing installation processes, logging, error handling, and system validation. Key features include:
 
-This script is a comprehensive Bash template designed for advanced functionality, robust error handling, and detailed logging. It includes features such as:
-
-- Stack tracing for debugging
-- System validation
-- Dynamic logging and configuration
-
-## Key Features
-
-1. **Robust Framework**:
-    - Handles various failure scenarios.
-    - Detailed system checks and validation.
-
-2. **Logging**:
-    - Supports dynamic log levels.
-    - Provides extensive logging details.
-
-3. **Error Handling**:
-    - Uses stack traces for debugging.
-    - Graceful handling of common Bash pitfalls.
-
-4. **Modular Design**:
-    - Includes reusable functions for extensibility.
-    - Designed for easy integration with other scripts.
+* Git Functions
+  * Contextual knowledge of local Git environment: Organization, Repo Name, Branch, Tags, Dirty flags
+  * Parse repo and Download individual files from Git
+  * Parse repo and download directories from Git
+  * Clone Git repositories
+  * Semantic version development
+* Apt Package management
+  * Cache and install package updates
+  * Install list of required packages
+* Environment validation
+  * Enforce Shell type
+  * Enforce Bash version
+  * Enforce System tools
+  * Enforce sudo use
+  * Enforce Bitness
+  * Enforce architecture (Raspberry Pi model validation)
+  * Validate Internet access (including proxy support)
+* Execution context information
+  * Script name
+  * Is running locally (vs. pipe from the Internet)
+  * Is running in a Git repo
+  * Is running from the system path
+* Debugging capabilities, feature flagged (no need to remove when done) independent of operational logging
+* warn() and die() error trapping with optional stack tracing
+* Full operational logging to file or screen
+  * Customizable levels: Debug, Info, Warning, Error, Critical, Details and Extended
+  * Colorized
+  * Word wrapping support
+* Executes a command and capture execution (status indicator, checkmark for done, X for failed), colorized
+* Can execute a new shell (another script) and transfer command
+* Colorized text options
+* Extensible user menu
+* Extensible command line options with adaptable usage display
 
 ## Usage and Customization
 
 To use this template:
 
-1. Customize the placeholders with your script-specific logic.
+1. Customize the placeholders (declarations) with your script-specific logic.
 2. Follow the provided function and variable documentation style.
 
 ### Global Declarations
 
 You can modify the script's functionality and function by using the global declarations at the beginning of the script. While some scripts have three lines up top with some minor changes you can make, this, being more extensible, requires a little scrolling.
 
-Most of these will use environment values, or allow default if the environment does not have this setting: `DRY_RUN=" ${DRY_RUN:-false}" ` means if you set DRY_RUN in the environment (or use `DRY_RUN=true scriptname.sh` to execute), it will default to that value. If the environment does not have this variable set, it will take whatever is to the right of the hyphen (`-`) as its default value.
+Most of these will use environment values or allow default if the environment does not have this setting: `DRY_RUN=" ${DRY_RUN:-false}" ` means if you set DRY_RUN in the environment (or use `DRY_RUN=true scriptname.sh` to execute), it will default to that value. If the environment does not have this variable set, it will take whatever is to the right of the hyphen (`-`) as its default value.
 
-#### Intended Customization Points - Dynamic
+Details may be found in [Declarations](Declarations.md).
 
-These may be modified dynamically within the script, so I have declared them as such.
+### Functions
 
-* `DRY_RUN="${DRY_RUN:-false}"` - If you set this true, exec_command() will simulate your commands with a one second delay.  You can use this within your functions by checking if `[["${DRY_RUN}" == "true"]]`. You can also set this at runtime with `--dry-run` or `-d'.
-* `THIS_SCRIPT=" ${THIS_SCRIPT:-$(basename "$0")}" ` - Sometimes, like when you curl/pipe a script through bash, the script is not aware of its name. You can set a default one here. In most cases, the script uses this for display purposes, but you may have other uses for it.
-* USE_CONSOLE="${USE_CONSOLE:-true}"
-* `TERSE=" ${TERSE:-false}" ` - As written, when TERSE is true, it will skip blocks, such as the "press any key" in `start_script()`. You may also set this at runtime with the `--terse` or `-t` arguments.
-* `LOG_OUTPUT=" ${LOG_OUTPUT:-both}" ` - Determines whether the script will print log output to the console, the log file, or both. The script may programmatically override these.
-* `LOG_FILE=" ${LOG_FILE:-}" ` - Also can be overridden in the arguments function with `--log-file` or `-f,` this declares a place to store runtime logs. If blank, the script will store the log in the real user's home (`~`) directory, named `${$SCRIPT_NAME.LOG}`.
-* `LOG_LEVEL=" ${LOG_LEVEL:-DEBUG}" ` - The log level at which level and above the script will provide log messages. This facility is independent of the `"$debug"` logging intended purely for script validation and testing purposes. You may set this choice at runtime with the `--log-level` or `-l` arguments.
-
-#### Read-Only Globals
-
-* `REQUIRE_SUDO=" ${REQUIRE_SUDO:-true}" ` - Whether or not the script enforces the use of sudo. Currently, it only allows sudo and not root when executed. I restrict this because it is good practice, but you can change whatever you want.
-* `REQUIRE_INTERNET=" ${REQUIRE_INTERNET:-true}" ` - checks to see if the Internet is available, like when you need apt packages.
-* `MIN_BASH_VERSION=" ${MIN_BASH_VERSION:-4.0}"` - Minimum bash version required.
-* `MIN_OS=11` - Minimum OS version required.
-* `MAX_OS=15` - Maximum OS version supported, or use -1 for no limit.
-* `SUPPORTED_BITNESS= "32"` - Require 32 or 64-bit (or "both are supported.)
-* `SUPPORTED_MODELS` - The script uses this array in the `check_arch()` function, specifically when Raspberry Pi model requirements are important. For instance, a script may not work on the Raspberry Pi 5. Change the models to` = "Supported"` or `= "Not Supported" `as required.
-* `DEPENDENCIES` - This is an array of system tools the script requires to work, such as `awk`, `grep`, `cut`, etc.. These are iterated and checked by the `validate_depends()` function.
-* `ENV_VARS_BASE` and `ENV_VARS` - `ENV_VARS_BASE` is an array of environment variables the script expects to be present at runtime. Subsequently, the script concatenates this into `ENV_VARS`, which is checked by `validate_env_vars()` at runtime.
-* `SYSTEM_READS` - An array of system files that are required to be accessible to the script for proper function. These are iterated and checked by `validate_sys_accs()`.
-* `APT_PACKAGES` - A list of apt packages to be installed or upgraded.
-WARN_STACK_TRACE="${WARN_STACK_TRACE:-false}"
-* `LOG_PROPERTIES` -  This is an exception to the rule of holding these declarations within the script header. The array is created in `setup_log()` depending on color codes set up by `init_colors()`. This array holds an associative array of properties for the logging functions, such as log level, how the level displays in the log, the color to use on the console for such messages (if supported), and the hierarchical number used to determine the message requested meets or exceeds the current log level.
-* Another exception to the "declare up top" rule. Colors and commands for terminal capabilities get set within `init_colors()` and are available globally by invoking the variables, e.g. `${FGRED}This is red.${RESET}`. You should be aware that setting and unsetting are intended as stream events; setting blinking, typing a word, and then resetting or setting no_blink will not change the previous letters; it will only turn the mode off for subsequent text.
-    * Utility Sequences
-        * `RESET` - Resets to the default terminal appearance.
-        * `BOLD` - Bolds text.
-        * `SMSO` - Sets standout mode, which may differ depending on the terminal type.
-        * `RMSO` - Useta standout mode.
-        * `UNDERLINE` - Underlines text.
-        * `NO_UNDERLINE` - Turns off underline.
-        * `BLINK` - Blinks text. For the love of God, please only use this in the event of an impending nuclear strike.
-        * `NO_BLINK` - Turns off blinking text mode.
-        * `ITALIC` - Italicises text.
-        * `NO_ITALIC` - Turns off italics.
-        * `MOVE_UP` - Moves the cursor up a line (often used with `CLEAR_LINE`.)
-        * `CLEAR_LINE` - Clears the current line of text.
-    * Foreground Colors
-        * `FGBLK` - Green text
-        * `FGRED` - Red text
-        * `FGGRN` - Green text
-        * `FGYLW` - Yellow text
-        * `FGBLU` - Blue text
-        * `FGMAG` - Magenta text
-        * `FGCYN` - Cyan text
-        * `FGWHT` - White text
-        * `FGGLD` - Gold text
-        * `FGRST` - Reset text color
-    * Background Colors
-        * `BGBLK` - Black background
-        * `BGRED` - Red background
-        * `BGGRN` - Green background
-        * `BGYLW` - Yellow background
-        * `BGBLU` - Blue background
-        * `BGMAG` - Magenta background
-        * `BGCYN` - Cyan background
-        * `BGWHT` - White background
-        * `BGRST` - Background color reset
-
-#### Global Placeholders
-
-It is good form to declare variables before use so that the scope is clear. I have declared several globals for such purposes.
-
-* `IS_PATH=" ${IS_PATH:-false}" ` - Within the typical run, `handle_execution_context()` will determine if the script is running from a path in your `PATH` environment. For instance, you may use this within your functions to determine if you have previously installed the script.
-* **Project Parameters** - These placehlders are are set when `get_proj_params()` is executed.  You can use defaults that provide some information if you execute the script outside a git repo. The script will fail to these values and continue (useful if you curl/pipe.)
-  * `IS_GITHUB_REPO=" ${IS_GITHUB_REPO:-false}" ` - A semaphore for whether you executed the script within a local git repo.
-  * `REPO_ORG=" ${REPO_ORG:-lbussy}" ` - The org owner, determined by a part in the origin URL. The script uses this to reconstruct a URL for git manipulations.
-  * `REPO_NAME=" ${REPO_NAME:-bash-template}" ` - The repo name, determined by a part in the origin URL. The script uses this to reconstruct a URL for git manipulations and to choose the project's name.
-  * `GIT_BRCH=" ${GIT_BRCH:-main}" ` - The current branch, determined by the `git branch `command and used for URL and display purposes.
-  * `GIT_TAG=" ${GIT_TAG:-0.0.1}" ` - The default tag (version), determined by the `git tag` command. The script uses this variable to construct a semantic version for display and `-v `checks.
-  * `SEM_VER=" ${GIT_TAG:-0.0.1}"` - Holds a generated semantic version; `get_proj_params()` will call `get_sem_ver()` to put together the current semantically correct version from the local repo, e.g., `1.0.0-main.2726605-dirty`. I have tested this version style to be correct for use with `dpkg --compare-versions` if needed.
-  * `LOCAL_SOURCE_DIR=" ${LOCAL_SOURCE_DIR:-}" ` - Will hold the git repo base path.
-  * `LOCAL_WWW_DIR=" ${LOCAL_WWW_DIR:-}" ` - Will hold the web file locations, by default `$LOCAL_SOURCE_DIR/data`. A use case would be to extend the script to install a set of web pages in the data directory.
-  * `LOCAL_SCRIPTS_DIR=" ${LOCAL_SCRIPTS_DIR:-}" ` - Will hold the script file locations, by default `$LOCAL_SCRIPTS_DIR/scripts`. A use case would be extending the script to execute a set of scripts or source libraries located in the scripts directory.
-  * `GIT_RAW="${GIT_RAW:-"https://raw.githubusercontent.com/$REPO_ORG/$REPO_NAME"}"` - A placeholder to access a file on GitHub in raw text form.
-  * `GIT_API="${GIT_API:-"https://api.github.com/repos/$REPO_ORG/$REPO_NAME"}"` - A URL which you may use with helper applications (like `jq`) to read information about your GitHub repo.
-* `CONSOLE_STATE="${CONSOLE_STATE:-$USE_CONSOLE}"` - Holds the previious `CONSOLE_STATE` when `USE_CONSOLE` is changed within the program.
-* `OPTIONS` - This variable is a placeholder for usage menu options.
+Details may be found in [Functions](Functions.md).
 
 ## Documentation Style
 
@@ -151,7 +82,10 @@ if [ $# -ne 1 ]; then
 fi
 
 # File to be analyzed
-file= "$1"
+file="$1"
+
+# Total lines in the file (including empty and comment lines)
+total_lines=$(wc -l < "$file")
 
 # Count actual lines (non-empty and not comments)
 real_lines=$(grep -v '^\s*#' "$file" | grep -v '^\s*$' | wc -l)
@@ -162,16 +96,24 @@ comment_lines=$(grep '^\s*#' "$file" | wc -l)
 # Count whitespace lines (empty or only whitespace)
 whitespace_lines=$(grep '^\s*$' "$file" | wc -l)
 
+# Calculate percentages with one decimal place
+real_percentage=$(awk "BEGIN {printf \"%.1f\", ($real_lines/$total_lines)*100}")
+comment_percentage=$(awk "BEGIN {printf \"%.1f\", ($comment_lines/$total_lines)*100}")
+whitespace_percentage=$(awk "BEGIN {printf \"%.1f\", ($whitespace_lines/$total_lines)*100}")
+
 # Output the results
-echo "Real lines: $real_lines"
-echo "Comment lines: $comment_lines"
-echo "Whitespace lines: $whitespace_lines"
+echo "* Total lines: $total_lines"
+echo "* Real lines: $real_lines ($real_percentage%)"
+echo "* Comment lines: $comment_lines ($comment_percentage%)"
+echo "* Whitespace lines: $whitespace_lines ($whitespace_percentage%)"
 ```
+
 The results:
 
-* Real lines: 1751
-* Comment lines: 1853
-* Whitespace lines: 407
+* Total lines: 5386
+* Real lines: 2318 (43.0%)
+* Comment lines: 2465 (45.8%)
+* Whitespace lines: 603 (11.2%)
 
 Here's an example of the comments I've tried to provide everywhere:
 
@@ -197,15 +139,18 @@ Here's an example of the comments I've tried to provide everywhere:
 ```
 
 ## Debugging
-You may enable debugging by passing a `debug` flag to functions. When enabled, debug messages are printed to `stderr` to avoid conflicting with functions that need to return text or numbers to the calling script.
+You may enable debugging by passing a `debug` flag to the entire script execution or individual functions. When enabled, debug messages are printed to `stderr` to avoid conflicting with functions that need to return text or numbers to the calling script. Debugging output is completely feature-flagged and intended to allow you to develop information without needing to go back and delete it afterward. It functions independently of the regular logging system.
 
 ### Debugging Example
 ``` bash
-local debug="${1:-}"  # Optional debug flag
-[[ "$debug" == "debug" ]] && printf "[DEBUG] Function '%s()' called by '%s()' at line %s.\n" "$FUNCNAME" "$caller_name" "$caller_line"
+local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+debug_print "This is a message" "$debug"
 ```
 
-The $debug argument is passed to ass subsequent functions. If you pass it to the script, e.g., `./template "debug"`, you will see the debug output of every function called like this:
+The initial debug line handles passing "debug, " capturing it in the `$debug` variable, and stripping it from the other arguments passed to the function. No other consideration for this argument needs to be made; e.g., your `$1` is still `$1`.
+
+The `$debug` argument is passed to all subsequent functions (and your new functions should be added as such). If you pass it to the script, e.g., `./template "debug"`, you will see the debug output of every function called like this:
 
 ```
 pi@pi:~/bash-template $ sudo ./template.sh "debug"
@@ -227,7 +172,7 @@ pi@pi:~/bash-template $ sudo ./template.sh "debug"
 [DEBUG] Exiting function 'get_repo_name()'.
 [DEBUG] REPO_NAME set to: bash-template
 [DEBUG] Function 'get_git_branch()' called by 'get_proj_params()' at line 3316.
-[DEBUG] Exiting function 'get_git_branch()'.
+[DEBUG] Exiting function 'get_git_branch().'
 [DEBUG] GIT_BRCH set to: main
 [DEBUG] Function 'get_last_tag()' called by 'get_proj_params()' at line 3319.
 [DEBUG] Retrieved tag from Git: 1.0.0
@@ -239,10 +184,10 @@ pi@pi:~/bash-template $ sudo ./template.sh "debug"
 [DEBUG] Exiting function' get_last_tag()'.
 [DEBUG] Received tag: from get_last_tag().
 [DEBUG] Function 'get_git_branch()' called by 'get_sem_ver()' at line 3238.
-[DEBUG] Exiting function 'get_git_branch()'.
+[DEBUG] Exiting function 'get_git_branch().'
 [DEBUG] Appended branch name to version: main
 [DEBUG] Function 'get_num_commits()' called by 'get_sem_ver()' at line 3243.
-[DEBUG] Exiting function 'get_num_commits()'.
+[DEBUG] Exiting function 'get_num_commits().'
 [DEBUG] Function 'get_short_hash()' called by 'get_sem_ver()' at line 3250.
 [DEBUG] Short hash of the current commit: 2726605
 [DEBUG] Exiting function' get_short_hash()'.
@@ -270,14 +215,13 @@ This example shows how a function can receive an optional "debug" argument to en
 ``` bash
 one_arg() {
     # Debug declarations
-    local debug=$(start_debug "$@")
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
     # Do stuff
     # ...
     local var="foo"
-    debug_print "This is a conditional debug print that says $foo."
+    debug_print "This is a conditional debug print that says $foo." "$debug"
 
     # Debug log: function exit
     end_debug "$debug"
 }
-```
