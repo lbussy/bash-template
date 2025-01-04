@@ -104,6 +104,21 @@ trap_error() {
 ############
 
 # -----------------------------------------------------------------------------
+# @var REQUIRE_SUDO
+# @brief Indicates whether root privileges are required to run the script.
+# @details This variable determines if the script requires execution with root
+#          privileges. It defaults to `true`, meaning the script will enforce
+#          that it is run with `sudo` or as a root user. This behavior can be
+#          overridden by setting the `REQUIRE_SUDO` environment variable to `false`.
+#
+# @default true
+#
+# @example
+# REQUIRE_SUDO=false ./template.sh  # Run the script without enforcing root privileges.
+# -----------------------------------------------------------------------------
+readonly REQUIRE_SUDO="${REQUIRE_SUDO:-true}"  # Default to "true" if not specified.
+
+# -----------------------------------------------------------------------------
 # @brief Determines the script name to use.
 # @details This block of code determines the value of `THIS_SCRIPT` based on
 #          the following logic:
@@ -252,7 +267,7 @@ declare OPTIONS_LIST=()     # List of -f--fl arguemtns for command line parsing
 #          include 'man', 'scripts', and 'conf'. These directories are used
 #          in the script to determine which content to fetch from the repository.
 # -----------------------------------------------------------------------------
-readonly GIT_DIRS=("man" "scripts" "conf")
+readonly GIT_DIRS="${GIT_DIRS:-("man" "scripts" "conf")}"
 
 # -----------------------------------------------------------------------------
 # @var USER_HOME
@@ -262,9 +277,14 @@ readonly GIT_DIRS=("man" "scripts" "conf")
 #          `SUDO_USER`, otherwise, it defaults to the current user's home directory.
 # -----------------------------------------------------------------------------
 declare USER_HOME
-if [[ -n "${SUDO_USER-}" ]]; then
+if [[ "$REQUIRE_SUDO" == true && -z "${SUDO_USER-}" ]]; then
+    # Fail gracefully if REQUIRE_SUDO is true and SUDO_USER is not set
+    readonly USER_HOME=""
+elif [[ -n "${SUDO_USER-}" ]]; then
+    # Use SUDO_USER's home directory if it's set
     readonly USER_HOME=$(eval echo "~$SUDO_USER")
 else
+    # Fallback to HOME if SUDO_USER is not set
     readonly USER_HOME="$HOME"
 fi
 
@@ -276,9 +296,14 @@ fi
 #          `sudo` (i.e., the actual user), otherwise it stores the current user.
 # -----------------------------------------------------------------------------
 declare REAL_USER
-if [[ -n "${SUDO_USER-}" ]]; then
+if [[ "$REQUIRE_SUDO" == true && -z "${SUDO_USER-}" ]]; then
+    # Fail gracefully if REQUIRE_SUDO is true and SUDO_USER is not set
+    readonly REAL_USER=""
+elif [[ -n "${SUDO_USER-}" ]]; then
+    # Use SUDO_USER if it's set
     readonly REAL_USER="$SUDO_USER"
 else
+    # Fallback to whoami if SUDO_USER is not set
     readonly REAL_USER="$(whoami)"
 fi
 
@@ -324,21 +349,6 @@ declare CONSOLE_STATE="${CONSOLE_STATE:-$USE_CONSOLE}"
 # ./template.sh
 # -----------------------------------------------------------------------------
 declare TERSE="${TERSE:-false}"  # Default to "false" (verbose logging).
-
-# -----------------------------------------------------------------------------
-# @var REQUIRE_SUDO
-# @brief Indicates whether root privileges are required to run the script.
-# @details This variable determines if the script requires execution with root
-#          privileges. It defaults to `true`, meaning the script will enforce
-#          that it is run with `sudo` or as a root user. This behavior can be
-#          overridden by setting the `REQUIRE_SUDO` environment variable to `false`.
-#
-# @default true
-#
-# @example
-# REQUIRE_SUDO=false ./template.sh  # Run the script without enforcing root privileges.
-# -----------------------------------------------------------------------------
-readonly REQUIRE_SUDO="${REQUIRE_SUDO:-true}"  # Default to "true" if not specified.
 
 # -----------------------------------------------------------------------------
 # @var REQUIRE_INTERNET
@@ -390,7 +400,7 @@ readonly MIN_BASH_VERSION="${MIN_BASH_VERSION:-4.0}"  # Default to "4.0" if not 
 #     exit 1
 # fi
 # -----------------------------------------------------------------------------
-readonly MIN_OS=11  # Minimum supported OS version.
+readonly MIN_OS="${MIN_OS:-11}"  # Default to "11" if not specified.
 
 # -----------------------------------------------------------------------------
 # @var MAX_OS
@@ -408,7 +418,7 @@ readonly MIN_OS=11  # Minimum supported OS version.
 #     exit 1
 # fi
 # -----------------------------------------------------------------------------
-readonly MAX_OS=15  # Maximum supported OS version (use -1 for no upper limit).
+readonly MAX_OS="${MAX_OS:-15}"  # Maximum supported OS version (use -1 for no upper limit).
 
 # -----------------------------------------------------------------------------
 # @var SUPPORTED_BITNESS
@@ -429,7 +439,7 @@ readonly MAX_OS=15  # Maximum supported OS version (use -1 for no upper limit).
 #     exit 1
 # fi
 # -----------------------------------------------------------------------------
-readonly SUPPORTED_BITNESS="32"  # Supported bitness ("32", "64", or "both").
+readonly SUPPORTED_BITNESS="${SUPPORTED_BITNESS:-32}"  # Supported bitness ("32", "64", or "both").
 
 # -----------------------------------------------------------------------------
 # @var SUPPORTED_MODELS
@@ -453,29 +463,39 @@ readonly SUPPORTED_BITNESS="32"  # Supported bitness ("32", "64", or "both").
 #     echo "Model: $full_name ($short_name, $chipset) - Status: ${SUPPORTED_MODELS[$model]}"
 # done
 # -----------------------------------------------------------------------------
-declare -A SUPPORTED_MODELS=(
-    # Unsupported Models
-    ["Raspberry Pi 5|5-model-b|bcm2712"]="Not Supported"              # Raspberry Pi 5 Model B
-    ["Raspberry Pi 400|400|bcm2711"]="Not Supported"                  # Raspberry Pi 400
-    ["Raspberry Pi Compute Module 4|4-compute-module|bcm2711"]="Not Supported" # Compute Module 4
-    ["Raspberry Pi Compute Module 3|3-compute-module|bcm2837"]="Not Supported" # Compute Module 3
-    ["Raspberry Pi Compute Module|compute-module|bcm2835"]="Not Supported"     # Original Compute Module
+# If SUPPORTED_MODELS is already set in the environment, use it
+# Otherwise, define the default supported models
+declare -A SUPPORTED_MODELS
 
-    # Supported Models
-    ["Raspberry Pi 4 Model B|4-model-b|bcm2711"]="Supported"          # Raspberry Pi 4 Model B
-    ["Raspberry Pi 3 Model A+|3-model-a-plus|bcm2837"]="Supported"    # Raspberry Pi 3 Model A+
-    ["Raspberry Pi 3 Model B+|3-model-b-plus|bcm2837"]="Supported"    # Raspberry Pi 3 Model B+
-    ["Raspberry Pi 3 Model B|3-model-b|bcm2837"]="Supported"          # Raspberry Pi 3 Model B
-    ["Raspberry Pi 2 Model B|2-model-b|bcm2836"]="Supported"          # Raspberry Pi 2 Model B
-    ["Raspberry Pi Model A+|model-a-plus|bcm2835"]="Supported"        # Raspberry Pi Model A+
-    ["Raspberry Pi Model B+|model-b-plus|bcm2835"]="Supported"        # Raspberry Pi Model B+
-    ["Raspberry Pi Model B Rev 2|model-b-rev2|bcm2835"]="Supported"   # Raspberry Pi Model B Rev 2
-    ["Raspberry Pi Model A|model-a|bcm2835"]="Supported"              # Raspberry Pi Model A
-    ["Raspberry Pi Model B|model-b|bcm2835"]="Supported"              # Raspberry Pi Model B
-    ["Raspberry Pi Zero 2 W|model-zero-2-w|bcm2837"]="Supported"      # Raspberry Pi Zero 2 W
-    ["Raspberry Pi Zero|model-zero|bcm2835"]="Supported"              # Raspberry Pi Zero
-    ["Raspberry Pi Zero W|model-zero-w|bcm2835"]="Supported"          # Raspberry Pi Zero W
-)
+if [[ -n "$SUPPORTED_MODELS" ]]; then
+    # If SUPPORTED_MODELS is set in the environment, use it
+    eval "declare -A SUPPORTED_MODELS=${SUPPORTED_MODELS}"
+else
+    # Otherwise, define the default supported models
+    SUPPORTED_MODELS=(
+        # Unsupported Models
+        ["Raspberry Pi 5|5-model-b|bcm2712"]="Not Supported"              # Raspberry Pi 5 Model B
+        ["Raspberry Pi 400|400|bcm2711"]="Not Supported"                  # Raspberry Pi 400
+        ["Raspberry Pi Compute Module 4|4-compute-module|bcm2711"]="Not Supported" # Compute Module 4
+        ["Raspberry Pi Compute Module 3|3-compute-module|bcm2837"]="Not Supported" # Compute Module 3
+        ["Raspberry Pi Compute Module|compute-module|bcm2835"]="Not Supported"     # Original Compute Module
+
+        # Supported Models
+        ["Raspberry Pi 4 Model B|4-model-b|bcm2711"]="Supported"          # Raspberry Pi 4 Model B
+        ["Raspberry Pi 3 Model A+|3-model-a-plus|bcm2837"]="Supported"    # Raspberry Pi 3 Model A+
+        ["Raspberry Pi 3 Model B+|3-model-b-plus|bcm2837"]="Supported"    # Raspberry Pi 3 Model B+
+        ["Raspberry Pi 3 Model B|3-model-b|bcm2837"]="Supported"          # Raspberry Pi 3 Model B
+        ["Raspberry Pi 2 Model B|2-model-b|bcm2836"]="Supported"          # Raspberry Pi 2 Model B
+        ["Raspberry Pi Model A+|model-a-plus|bcm2835"]="Supported"        # Raspberry Pi Model A+
+        ["Raspberry Pi Model B+|model-b-plus|bcm2835"]="Supported"        # Raspberry Pi Model B+
+        ["Raspberry Pi Model B Rev 2|model-b-rev2|bcm2835"]="Supported"   # Raspberry Pi Model B Rev 2
+        ["Raspberry Pi Model A|model-a|bcm2835"]="Supported"              # Raspberry Pi Model A
+        ["Raspberry Pi Model B|model-b|bcm2835"]="Supported"              # Raspberry Pi Model B
+        ["Raspberry Pi Zero 2 W|model-zero-2-w|bcm2837"]="Supported"      # Raspberry Pi Zero 2 W
+        ["Raspberry Pi Zero|model-zero|bcm2835"]="Supported"              # Raspberry Pi Zero
+        ["Raspberry Pi Zero W|model-zero-w|bcm2835"]="Supported"          # Raspberry Pi Zero W
+    )
+fi
 readonly SUPPORTED_MODELS
 
 # -----------------------------------------------------------------------------
@@ -610,6 +630,34 @@ declare -ar ENV_VARS_BASE=(
     "HOME"       # Home directory of the current user
     "COLUMNS"    # Terminal width for formatting
 )
+
+# -----------------------------------------------------------------------------
+# @var ENV_VARS
+# @type array
+# @brief Final list of required environment variables.
+# @details This array extends `ENV_VARS_BASE` to include additional variables
+#          required under specific conditions. If the script requires root
+#          privileges (`REQUIRE_SUDO=true`), the `SUDO_USER` variable is added
+#          dynamically during runtime. Otherwise, it inherits only the base
+#          environment variables.
+#
+#          - `SUDO_USER`: Identifies the user who invoked the script using `sudo`.
+#
+# @note Ensure `ENV_VARS_BASE` is properly defined before constructing `ENV_VARS`.
+#
+# @example
+# for var in "${ENV_VARS[@]}"; do
+#     if [[ -z "${!var}" ]]; then
+#         echo "Error: Required environment variable '$var' is not set."
+#         exit 1
+#     fi
+# done
+# -----------------------------------------------------------------------------
+if [[ "$REQUIRE_SUDO" == true ]]; then
+    readonly -a ENV_VARS=("${ENV_VARS_BASE[@]}" "SUDO_USER")
+else
+    readonly -a ENV_VARS=("${ENV_VARS_BASE[@]}")
+fi
 
 # -----------------------------------------------------------------------------
 # @var COLUMNS
@@ -1388,6 +1436,1186 @@ die() {
 }
 
 # -----------------------------------------------------------------------------
+# @brief Add a dot (`.`) at the beginning of a string if it's missing.
+# @details This function ensures the input string starts with a leading dot.
+#          If the input string is empty, the function logs a warning and returns
+#          an error code.
+#
+# @param $1 The input string to process.
+#
+# @return Outputs the modified string with a leading dot if it was missing.
+# @retval 1 If the input string is empty.
+#
+# @example
+# add_dot "example"   # Outputs ".example"
+# add_dot ".example"  # Outputs ".example"
+# add_dot ""          # Logs a warning and returns an error.
+# -----------------------------------------------------------------------------
+add_dot() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    local input=${1:-}  # Input string to process
+
+    # Validate input
+    if [[ -z "$input" ]]; then
+        warn "Input to add_dot cannot be empty."
+            debug_end "$debug" 
+        return 1
+    fi
+
+    # Add a leading dot if it's missing
+    if [[ "$input" != .* ]]; then
+        input=".$input"
+    fi
+
+    debug_end "$debug" 
+    printf "%s\n" "$input"
+}
+
+# -----------------------------------------------------------------------------
+# @brief Removes a leading dot from the input string, if present.
+# @details This function checks if the input string starts with a dot (`.`)
+#          and removes it. If the input is empty, an error message is logged.
+#          The function handles empty strings by returning an error and logging
+#          an appropriate warning message.
+#
+# @param $1 [required] The input string to process.
+#
+# @return 0 on success, 1 on failure (when the input is empty).
+#
+# @example
+# remove_dot ".hidden"  # Output: "hidden"
+# remove_dot "visible"  # Output: "visible"
+# -----------------------------------------------------------------------------
+remove_dot() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    local input=${1:-}  # Input string to process
+
+    # Validate input
+    if [[ -z "$input" ]]; then
+        warn "ERROR" "Input to remove_dot cannot be empty."
+        debug_end "$debug"  # Next line must be a return/print/exit from func
+        return 1
+    fi
+
+    # Remove the leading dot if present
+    if [[ "$input" == *. ]]; then
+        input="${input#.}"
+    fi
+
+    debug_end "$debug"  
+    printf "%s\n" "$input"
+}
+
+# -----------------------------------------------------------------------------
+# @brief Adds a period to the end of the input string if it doesn't already
+#        have one.
+# @details This function checks if the input string has a trailing period.
+#          If not, it appends one. If the input is empty, an error is logged.
+#
+# @param $1 [required] The input string to process.
+#
+# @return The input string with a period added at the end (if missing).
+# @return 1 If the input string is empty.
+#
+# @example
+# result=$(add_period "Hello")
+# echo "$result"  # Output: "Hello."
+# -----------------------------------------------------------------------------
+add_period() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    local input=${1:-}  # Input string to process
+
+    # Validate input
+    if [[ -z "$input" ]]; then
+        warn "Input to add_period cannot be empty."
+        debug_end "$debug" # Next line must be a return/print/exit
+        return 1
+    fi
+
+    # Add a trailing period if it's missing
+    if [[ "$input" != *. ]]; then
+        input="$input."
+    fi
+
+    debug_end "$debug"  
+    printf "%s\n" "$input"
+}
+
+# -----------------------------------------------------------------------------
+# @brief Remove a trailing period (`.`) from a string if present.
+# @details This function processes the input string and removes a trailing period
+#          if it exists. If the input string is empty, the function logs an error
+#          and returns an error code.
+#
+# @param $1 The input string to process.
+#
+# @return Outputs the modified string without a trailing period if one was present.
+# @retval 1 If the input string is empty.
+#
+# @example
+# remove_period "example."  # Outputs "example"
+# remove_period "example"   # Outputs "example"
+# remove_period ""          # Logs an error and returns an error code.
+# -----------------------------------------------------------------------------
+remove_period() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    local input=${1:-}  # Input string to process
+
+    # Validate input
+    if [[ -z "$input" ]]; then
+        warn "ERROR" "Input to remove_period cannot be empty."
+            debug_end "$debug" 
+        return 1
+    fi
+
+    # Remove the trailing period if present
+    if [[ "$input" == *. ]]; then
+        input="${input%.}"
+    fi
+
+    debug_end "$debug" 
+    printf "%s\n" "$input"
+}
+
+# -----------------------------------------------------------------------------
+# @brief Add a trailing slash (`/`) to a string if it's missing.
+# @details This function ensures that the input string ends with a trailing slash.
+#          If the input string is empty, the function logs an error and returns
+#          an error code.
+#
+# @param $1 The input string to process.
+#
+# @return Outputs the modified string with a trailing slash if one was missing.
+# @retval 1 If the input string is empty.
+#
+# @example
+# add_slash "/path/to/directory"  # Outputs "/path/to/directory/"
+# add_slash "/path/to/directory/" # Outputs "/path/to/directory/"
+# add_slash ""                    # Logs an error and returns an error code.
+# -----------------------------------------------------------------------------
+add_slash() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    local input="$1"  # Input string to process
+
+    # Validate input
+    if [[ -z "${input:-}" ]]; then
+        warn "ERROR" "Input to add_slash cannot be empty."
+            debug_end "$debug" 
+        return 1
+    fi
+
+    # Add a trailing slash if it's missing
+    if [[ "$input" != */ ]]; then
+        input="$input/"
+    fi
+
+    debug_end "$debug" 
+    printf "%s\n" "$input"
+}
+
+# -----------------------------------------------------------------------------
+# @brief Remove a trailing slash (`/`) from a string if present.
+# @details This function ensures that the input string does not end with a trailing
+#          slash. If the input string is empty, the function logs an error and
+#          returns an error code.
+#
+# @param $1 The input string to process.
+#
+# @return Outputs the modified string without a trailing slash if one was present.
+# @retval 1 If the input string is empty.
+#
+# @example
+# remove_slash "/path/to/directory/"  # Outputs "/path/to/directory"
+# remove_slash "/path/to/directory"   # Outputs "/path/to/directory"
+# remove_slash ""                     # Logs an error and returns an error code.
+# -----------------------------------------------------------------------------
+remove_slash() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    local input="$1"  # Input string to process
+
+    # Validate input
+    if [[ -z "${input:-}" ]]; then
+        warn "ERROR" "Input to remove_slash cannot be empty."
+            debug_end "$debug" 
+        return 1
+    fi
+
+    # Remove the trailing slash if present
+    if [[ "$input" == */ ]]; then
+        input="${input%/}"
+    fi
+
+    debug_end "$debug" 
+    printf "%s\n" "$input"
+}
+
+# -----------------------------------------------------------------------------
+# @brief Pauses execution and waits for user input to continue.
+# @details This function displays a message prompting the user to press any key
+#          to continue. It waits for a single key press, then resumes execution.
+#
+# @example
+# pause
+# -----------------------------------------------------------------------------
+pause() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    printf "Press any key to continue.\n"
+    read -n 1 -sr key < /dev/tty || true
+    printf "\n"
+    debug_print "$key" "$debug"
+
+    debug_end "$debug" 
+    return 0
+}
+
+############
+### Print/Display Environment Functions
+############
+
+# -----------------------------------------------------------------------------
+# @brief Print the system information to the log.
+# @details Extracts and logs the system's name and version using information
+#          from `/etc/os-release`. If the information cannot be extracted, logs
+#          a warning message. Includes debug output when the `debug` argument is provided.
+#
+# @param $1 [Optional] Debug flag to enable detailed output (`debug`).
+#
+# @global None
+#
+# @return None
+#
+# @example
+# print_system debug
+# Outputs system information with debug logs enabled.
+# -----------------------------------------------------------------------------
+# shellcheck disable=2329
+print_system() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    # Declare local variables
+    local system_name
+
+    # Extract system name and version from /etc/os-release
+    system_name=$(grep '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d '=' -f2 | tr -d '"')
+
+    # Debug: Log extracted system name
+    debug_print "Extracted system name: ${system_name:-<empty>}\n" "$debug"
+
+    # Check if system_name is empty and log accordingly
+    if [[ -z "${system_name:-}" ]]; then
+        warn "System: Unknown (could not extract system information)."  # Log warning if system information is unavailable
+        debug_print "System information could not be extracted." "$debug"
+    else
+        logI "System: $system_name."  # Log the system information
+        debug_print "Logged system information: $system_name" "$debug"
+    fi
+
+    debug_end "$debug" 
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# @brief Print the script version and optionally log it.
+# @details This function displays the version of the script stored in the global
+#          variable `SEM_VER`. If called by `process_args`, it uses `printf` to
+#          display the version; otherwise, it logs the version using `logI`.
+#          If the debug flag is set to "debug," additional debug information
+#          will be printed.
+#
+# @param $1 [Optional] Debug flag. Pass "debug" to enable debug output.
+#
+# @global THIS_SCRIPT The name of the script.
+# @global SEM_VER The version of the script.
+# @global REPO_NAME The name of the repository.
+#
+# @return None
+#
+# @example
+# print_version debug
+# -----------------------------------------------------------------------------
+print_version() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    # Check the name of the calling function
+    local caller="${FUNCNAME[1]}"
+
+    if [[ "$caller" == "process_args" ]]; then
+        printf "%s: version %s\n" "$THIS_SCRIPT" "$SEM_VER" # Display the script name and version
+    else
+        logI "Running $(repo_to_title_case "$REPO_NAME")'s '$THIS_SCRIPT', version $SEM_VER" # Log the script name and version
+    fi
+
+    debug_end "$debug" 
+    return 0
+}
+
+############
+### Check Environment Functions
+############
+
+# -----------------------------------------------------------------------------
+# @brief Determine the script's execution context.
+# @details Identifies how the script was executed, returning one of the
+#          predefined context codes. Handles errors gracefully and outputs
+#          additional debugging information when the "debug" argument is passed.
+#
+# Context Codes:
+#   - `0`: Script executed via pipe.
+#   - `1`: Script executed with `bash` in an unusual way.
+#   - `2`: Script executed directly (local or from PATH).
+#   - `3`: Script executed from within a GitHub repository.
+#   - `4`: Script executed from a PATH location.
+#
+# @param $1 [Optional] Pass "debug" to enable verbose logging for debugging purposes.
+#
+# @throws Exits with an error if the script path cannot be resolved or
+#         directory traversal exceeds the maximum depth.
+#
+# @return Returns a context code (described above) indicating the script's
+#         execution context.
+# -----------------------------------------------------------------------------
+determine_execution_context() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    local script_path   # Full path of the script
+    local current_dir   # Temporary variable to traverse directories
+    local max_depth=10  # Limit for directory traversal depth
+    local depth=0       # Counter for directory traversal
+
+    # Check if the script is executed via pipe
+    if [[ "$0" == "bash" ]]; then
+        if [[ -p /dev/stdin ]]; then
+            debug_print "Execution context: Script executed via pipe." "$debug"
+                    debug_end "$debug" 
+            return 0  # Execution via pipe
+        else
+            warn "Unusual bash execution detected."
+                    debug_end "$debug" 
+            return 1  # Unusual bash execution
+        fi
+    fi
+
+    # Get the script path
+    script_path=$(realpath "$0" 2>/dev/null) || script_path=$(pwd)/$(basename "$0")
+    if [[ ! -f "$script_path" ]]; then
+            debug_end "$debug" 
+        die 1 "Unable to resolve script path: $script_path"
+    fi
+    debug_print "Resolved script path: $script_path" "$debug"
+
+    # Initialize current_dir with the directory part of script_path
+    current_dir="${script_path%/*}"
+    current_dir="${current_dir:-.}"
+
+    # Safeguard against invalid current_dir during initialization
+    if [[ ! -d "$current_dir" ]]; then
+            debug_end "$debug" 
+        die 1 "Invalid starting directory: $current_dir"
+    fi
+
+    # Traverse upwards to detect a GitHub repository
+    while [[ "$current_dir" != "/" && $depth -lt $max_depth ]]; do
+        if [[ -d "$current_dir/.git" ]]; then
+            debug_print "GitHub repository detected at depth $depth: $current_dir" "$debug"
+                    debug_end "$debug" 
+            return 3  # Execution within a GitHub repository
+        fi
+        current_dir=$(dirname "$current_dir") # Move up one directory
+        ((depth++))
+    done
+
+    # Handle loop termination conditions
+    if [[ $depth -ge $max_depth ]]; then
+            debug_end "$debug" 
+        die 1 "Directory traversal exceeded maximum depth ($max_depth)"
+    fi
+
+    # Check if the script is executed from a PATH location
+    local resolved_path
+    resolved_path=$(command -v "$(basename "$0")" 2>/dev/null)
+    if [[ "$resolved_path" == "$script_path" ]]; then
+        debug_print "Script executed from a PATH location: $resolved_path." "$debug"
+            debug_end "$debug" 
+        return 4  # Execution from a PATH location
+    fi
+
+    # Default: Direct execution from the local filesystem
+    debug_print "Default context: Script executed directly." "$debug"
+
+    debug_end "$debug" 
+    return 2
+}
+
+# -----------------------------------------------------------------------------
+# @brief Handle the execution context of the script.
+# @details Determines the script's execution context by invoking
+#          `determine_execution_context` and sets global variables based on
+#          the context. Outputs debug information if the "debug" argument is
+#          passed. Provides safeguards for unknown or invalid context codes.
+#
+# @param $1 [Optional] Pass "debug" to enable verbose logging for debugging purposes.
+#
+# @throws Exits with an error if an invalid context code is returned.
+#
+# @return None
+# -----------------------------------------------------------------------------
+handle_execution_context() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    # Call determine_execution_context and capture its output
+    determine_execution_context "$debug"
+    local context=$?  # Capture the return code to determine context
+
+    # Validate the context
+    if ! [[ "$context" =~ ^[0-4]$ ]]; then
+        debug_end "$debug" 
+        die 1 "Invalid context code returned: $context"
+    fi
+
+    # Initialize and set global variables based on the context
+    case $context in
+        0)
+            THIS_SCRIPT="piped_script"
+            USE_LOCAL=false
+            IS_REPO=false
+            IS_PATH=false
+            debug_print "Execution context: Script was piped (e.g., 'curl url | sudo bash')." "$debug"
+            ;;
+        1)
+            THIS_SCRIPT="piped_script"
+            USE_LOCAL=false
+            IS_REPO=false
+            IS_PATH=false
+            warn "Execution context: Script run with 'bash' in an unusual way."
+            ;;
+        2)
+            THIS_SCRIPT=$(basename "$0")
+            USE_LOCAL=true
+            IS_REPO=false
+            IS_PATH=false
+            debug_print "Execution context: Script executed directly from $THIS_SCRIPT." "$debug"
+            ;;
+        3)
+            THIS_SCRIPT=$(basename "$0")
+            USE_LOCAL=true
+            IS_REPO=true
+            IS_PATH=false
+            debug_print "Execution context: Script is within a GitHub repository."\n" >&2" "$debug"
+            ;;
+        4)
+            THIS_SCRIPT=$(basename "$0")
+            USE_LOCAL=true
+            IS_REPO=false
+            IS_PATH=true
+            debug_print "Execution context: Script executed from a PATH location ($(command -v "$THIS_SCRIPT"))" "$debug"
+            ;;
+        *)
+                    debug_end "$debug" 
+            die 99 "Unknown execution context."
+            ;;
+    esac
+
+    debug_end "$debug" 
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# @brief Enforce that the script is run directly with `sudo`.
+# @details Ensures the script is executed with `sudo` privileges and not:
+#          - From a `sudo su` shell.
+#          - As the root user directly.
+#
+# @global REQUIRE_SUDO Boolean indicating if `sudo` is required.
+# @global SUDO_USER User invoking `sudo`.
+# @global SUDO_COMMAND The command invoked with `sudo`.
+# @global THIS_SCRIPT Name of the current script.
+#
+# @param $1 [Optional] Debug flag. Pass "debug" to enable debug output.
+#
+# @return None
+# @exit 1 if the script is not executed correctly.
+#
+# @example
+# enforce_sudo debug
+# -----------------------------------------------------------------------------
+enforce_sudo() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    if [[ "$REQUIRE_SUDO" == true ]]; then
+        if [[ "$EUID" -eq 0 && -n "$SUDO_USER" && "$SUDO_COMMAND" == *"$0"* ]]; then
+            debug_print "Sudo conditions met. Proceeding." "$debug"
+            # Script is properly executed with `sudo`
+        elif [[ "$EUID" -eq 0 && -n "$SUDO_USER" ]]; then
+            debug_print "Script run from a root shell. Exiting." "$debug"
+            die 1 "This script should not be run from a root shell." \
+                  "Run it with 'sudo $THIS_SCRIPT' as a regular user."
+        elif [[ "$EUID" -eq 0 ]]; then
+            debug_print "Script run as root. Exiting." "$debug"
+            die 1 "This script should not be run as the root user." \
+                  "Run it with 'sudo $THIS_SCRIPT' as a regular user."
+        else
+            debug_print "Script not run with sudo. Exiting." "$debug"
+            die 1 "This script requires 'sudo' privileges." \
+                  "Please re-run it using 'sudo $THIS_SCRIPT'."
+        fi
+    fi
+
+    debug_print "Function parameters:" \
+        "\n\t- REQUIRE_SUDO='${REQUIRE_SUDO:-(not set)}'" \
+        "\n\t- EUID='$EUID'" \
+        "\n\t- SUDO_USER='${SUDO_USER:-(not set)}'" \
+        "\n\t- SUDO_COMMAND='${SUDO_COMMAND:-(not set)}'" "$debug"
+
+    debug_end "$debug" 
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# @brief Check for required dependencies and report any missing ones.
+# @details Iterates through the dependencies listed in the global array `DEPENDENCIES`,
+#          checking if each one is installed. Logs missing dependencies and exits
+#          the script with an error code if any are missing.
+#
+# @param $1 [Optional] Debug flag. Pass "debug" to enable debug output.
+#
+# @global DEPENDENCIES Array of required dependencies.
+#
+# @return None
+# @exit 1 if any dependencies are missing.
+#
+# @example
+# validate_depends debug
+# -----------------------------------------------------------------------------
+validate_depends() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    # Declare local variables
+    local missing=0  # Counter for missing dependencies
+    local dep        # Iterator for dependencies
+
+    # Iterate through dependencies
+    for dep in "${DEPENDENCIES[@]}"; do
+        if ! command -v "$dep" &>/dev/null; then
+            warn "Missing dependency: $dep"
+            ((missing++))
+            debug_print "Missing dependency: $dep" "$debug"
+        else
+            debug_print "Found dependency: $dep" "$debug"
+        fi
+    done
+
+    # Handle missing dependencies
+    if ((missing > 0)); then
+            debug_end "$debug" 
+        die 1 "Missing $missing dependencies. Install them and re-run the script."
+    fi
+
+    debug_print "All dependencies are present." "$debug"
+
+    debug_end "$debug" 
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# @brief Check the availability of critical system files.
+# @details Verifies that each file listed in the `SYSTEM_READS` array exists and is readable.
+#          Logs an error for any missing or unreadable files and exits the script if any issues are found.
+#
+# @param $1 [Optional] Debug flag. Pass "debug" to enable debug output.
+#
+# @global SYSTEM_READS Array of critical system file paths to check.
+#
+# @return None
+# @exit 1 if any required files are missing or unreadable.
+#
+# @example
+# validate_sys_accs debug
+# -----------------------------------------------------------------------------
+validate_sys_accs() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    # Declare local variables
+    local missing=0  # Counter for missing or unreadable files
+    local file       # Iterator for files
+
+    # Iterate through system files
+    for file in "${SYSTEM_READS[@]}"; do
+        if [[ ! -r "$file" ]]; then
+            warn "Missing or unreadable file: $file"
+            ((missing++))
+            debug_print "Missing or unreadable file: $file" "$debug"
+        else
+            debug_print "File is accessible: $file" "$debug"
+        fi
+    done
+
+    # Handle missing files
+    if ((missing > 0)); then
+            debug_end "$debug" 
+        die 1 "Missing or unreadable $missing critical system files."
+    fi
+
+    debug_print "All critical system files are accessible." "$debug"
+
+    debug_end "$debug" 
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# @brief Validate the existence of required environment variables.
+# @details Checks if the environment variables specified in the `ENV_VARS` array
+#          are set. Logs any missing variables and exits the script if any are missing.
+#
+# @param $1 [Optional] Debug flag. Pass "debug" to enable debug output.
+#
+# @global ENV_VARS Array of required environment variables.
+#
+# @return None
+# @exit 1 if any environment variables are missing.
+#
+# @example
+# validate_env_vars debug
+# -----------------------------------------------------------------------------
+validate_env_vars() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    # Declare local variables
+    local missing=0  # Counter for missing environment variables
+    local var        # Iterator for environment variables
+
+    # Iterate through environment variables
+    for var in "${ENV_VARS[@]}"; do
+        if [[ -z "${!var:-}" ]]; then
+            printf "ERROR: Missing environment variable: %s\n" "$var" >&2
+            ((missing++))
+            debug_print "Missing environment variable: $var" "$debug"
+        else
+            debug_print "Environment variable is set: $var=${!var}" "$debug"
+        fi
+    done
+
+    # Handle missing variables
+    if ((missing > 0)); then
+        printf "ERROR: Missing %d required environment variables. Ensure all required environment variables are set and re-run the script.\n" "$missing" >&2
+            debug_end "$debug" 
+        exit 1
+    fi
+
+    debug_end "$debug" 
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# @brief Check if the script is running in a Bash shell.
+# @details Ensures the script is executed with Bash, as it may use Bash-specific features.
+#          If the "debug" argument is passed, detailed logging will be displayed for each check.
+#
+# @param $1 [Optional] "debug" to enable verbose output for all checks.
+#
+# @global BASH_VERSION The version of the Bash shell being used.
+#
+# @return None
+# @exit 1 if not running in Bash.
+#
+# @example
+# check_bash
+# check_bash debug
+# -----------------------------------------------------------------------------
+check_bash() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    # Ensure the script is running in a Bash shell
+    if [[ -z "${BASH_VERSION:-}" ]]; then
+            debug_end "$debug" 
+        die 1 "This script requires Bash. Please run it with Bash."
+    fi
+
+    debug_end "$debug" 
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# @brief Check if the current Bash version meets the minimum required version.
+# @details Compares the current Bash version against a required version specified
+#          in the global variable `MIN_BASH_VERSION`. If `MIN_BASH_VERSION` is "none",
+#          the check is skipped. Outputs debug information if enabled.
+#
+# @param $1 [Optional] "debug" to enable verbose output for this check.
+#
+# @global MIN_BASH_VERSION Minimum required Bash version (e.g., "4.0") or "none".
+# @global BASH_VERSINFO Array containing the major and minor versions of the running Bash.
+#
+# @return None
+# @exit 1 if the Bash version is insufficient.
+#
+# @example
+# check_sh_ver
+# check_sh_ver debug
+# -----------------------------------------------------------------------------
+check_sh_ver() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    local required_version="${MIN_BASH_VERSION:-none}"
+
+    # If MIN_BASH_VERSION is "none", skip version check
+    if [[ "$required_version" == "none" ]]; then
+        debug_print "Bash version check is disabled (MIN_BASH_VERSION='none')." "$debug"
+    else
+        debug_print "Minimum required Bash version is set to '$required_version'." "$debug"
+
+        # Extract the major and minor version components from the required version
+        local required_major="${required_version%%.*}"
+        local required_minor="${required_version#*.}"
+        required_minor="${required_minor%%.*}"
+
+        # Log current Bash version for debugging
+        debug_print "Current Bash version is ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}." "$debug"
+
+        # Compare the current Bash version with the required version
+        if (( BASH_VERSINFO[0] < required_major ||
+              (BASH_VERSINFO[0] == required_major && BASH_VERSINFO[1] < required_minor) )); then
+                    debug_end "$debug" 
+            die 1 "This script requires Bash version $required_version or newer."
+        fi
+    fi
+
+    debug_end "$debug" 
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# @brief Check system bitness compatibility.
+# @details Validates whether the current system's bitness matches the supported
+#          configuration. Outputs debug information if debug mode is enabled.
+#
+# @param $1 [Optional] "debug" to enable verbose output for the check.
+#
+# @global SUPPORTED_BITNESS Specifies the bitness supported by the script ("32", "64", or "both").
+#
+# @return None
+# @exit 1 if the system bitness is unsupported.
+#
+# @example
+# check_bitness
+# check_bitness debug
+# -----------------------------------------------------------------------------
+check_bitness() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    local bitness  # Stores the detected bitness of the system.
+
+    # Detect the system bitness
+    bitness=$(getconf LONG_BIT)
+
+    # Debugging: Detected system bitness
+    debug_print "Detected system bitness: $bitness-bit." "$debug"
+
+    case "$SUPPORTED_BITNESS" in
+        "32")
+            debug_print "Script supports only 32-bit systems." "$debug"
+            if [[ "$bitness" -ne 32 ]]; then
+                            debug_end "$debug" 
+                die 1 "Only 32-bit systems are supported. Detected $bitness-bit system."
+            fi
+            ;;
+        "64")
+            debug_print "Script supports only 64-bit systems." "$debug"
+            if [[ "$bitness" -ne 64 ]]; then
+                            debug_end "$debug" 
+                die 1 "Only 64-bit systems are supported. Detected $bitness-bit system."
+            fi
+            ;;
+        "both")
+            debug_print "Script supports both 32-bit and 64-bit systems." "$debug"
+            ;;
+        *)
+            debug_print "Invalid SUPPORTED_BITNESS configuration: '$SUPPORTED_BITNESS'." "$debug"
+                    debug_end "$debug" 
+            die 1 "Configuration error: Invalid value for SUPPORTED_BITNESS ('$SUPPORTED_BITNESS')."
+            ;;
+    esac
+
+    debug_end "$debug" 
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# @brief Check Raspbian OS version compatibility.
+# @details This function ensures that the Raspbian version is within the supported
+#          range and logs an error if the compatibility check fails.
+#
+# @param $1 [Optional] "debug" to enable verbose output for this check.
+#
+# @global MIN_OS Minimum supported OS version.
+# @global MAX_OS Maximum supported OS version (-1 indicates no upper limit).
+# @global log_message Function for logging messages.
+# @global die Function to handle critical errors and terminate the script.
+#
+# @return None Exits the script with an error code if the OS version is incompatible.
+#
+# @example
+# check_release
+# check_release debug
+# -----------------------------------------------------------------------------
+check_release() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    local ver  # Holds the extracted version ID from /etc/os-release.
+
+    # Ensure the file exists and is readable.
+    if [[ ! -f /etc/os-release || ! -r /etc/os-release ]]; then
+        die 1 "Unable to read /etc/os-release. Ensure this script is run on a compatible system."
+    fi
+
+    # Extract the VERSION_ID from /etc/os-release.
+    if [[ -f /etc/os-release ]]; then
+        ver=$(grep "VERSION_ID" /etc/os-release | awk -F "=" '{print $2}' | tr -d '"')
+    else
+        warn "File /etc/os-release not found."
+        ver="unknown"
+    fi
+    debug_print "Raspbian version '$ver' detected." "$debug"
+
+    # Ensure the extracted version is not empty.
+    if [[ -z "${ver:-}" ]]; then
+            debug_end "$debug" 
+        die 1 "VERSION_ID is missing or empty in /etc/os-release."
+    fi
+
+    # Check if the version is older than the minimum supported version.
+    if [[ "$ver" -lt "$MIN_OS" ]]; then
+            debug_end "$debug" 
+        die 1 "Raspbian version $ver is older than the minimum supported version ($MIN_OS)."
+    fi
+
+    # Check if the version is newer than the maximum supported version, if applicable.
+    if [[ "$MAX_OS" -ne -1 && "$ver" -gt "$MAX_OS" ]]; then
+            debug_end "$debug" 
+        die 1 "Raspbian version $ver is newer than the maximum supported version ($MAX_OS)."
+    fi
+
+    debug_end "$debug" 
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# @brief Check if the detected Raspberry Pi model is supported.
+# @details Reads the Raspberry Pi model from /proc/device-tree/compatible and checks
+#          it against a predefined list of supported models. Logs an error if the
+#          model is unsupported or cannot be detected. Optionally outputs debug information
+#          about all models if `debug` is set to `true`.
+#
+# @param $1 [Optional] "debug" to enable verbose output for all supported/unsupported models.
+#
+# @global SUPPORTED_MODELS Associative array of supported and unsupported Raspberry Pi models.
+# @global log_message Function for logging messages.
+# @global die Function to handle critical errors and terminate the script.
+#
+# @return None Exits the script with an error code if the architecture is unsupported.
+#
+# @example
+# check_arch
+# check_arch debug
+# -----------------------------------------------------------------------------
+check_arch() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    local detected_model is_supported key full_name model chip this_model this_chip
+
+    # Check if SUPPORTED_MODELS is set to "*" to allow all models
+    if [[ "${SUPPORTED_MODELS}" == "*" ]]; then
+        is_supported=true
+        debug_print "All models are allowed, SUPPORTED_MODELS is set to '*'" "$debug"
+        debug_end "$debug"
+        return 0
+    fi
+
+    # Read and process the compatible string
+    if ! detected_model=$(cat /proc/device-tree/compatible 2>/dev/null | tr '\0' '\n' | grep "raspberrypi" | sed 's/raspberrypi,//'); then
+        debug_end "$debug"
+        die 1 "Failed to read or process /proc/device-tree/compatible. Ensure compatibility."
+    fi
+
+    # Check if the detected model is empty
+    if [[ -z "${detected_model:-}" ]]; then
+        debug_end "$debug"
+        die 1 "No Raspberry Pi model found in /proc/device-tree/compatible. This system may not be supported."
+    fi
+    debug_print "Detected model: $detected_model" "$debug"
+
+    # Initialize is_supported flag
+    is_supported=false
+
+    # Iterate through supported models to check compatibility
+    for key in "${!SUPPORTED_MODELS[@]}"; do
+        IFS='|' read -r full_name model chip <<< "$key"
+        if [[ "$model" == "$detected_model" ]]; then
+            if [[ "${SUPPORTED_MODELS[$key]}" == "Supported" ]]; then
+                is_supported=true
+                this_model="$full_name"
+                this_chip="$chip"
+                debug_print "Model: '$full_name' ($chip) is supported." "$debug"
+            else
+                debug_end "$debug"
+                die 1 "Model: '$full_name' ($chip) is not supported."
+            fi
+            break
+        fi
+    done
+
+    # Debug output of all models if requested
+    if [[ "$debug" == "debug" ]]; then
+        # Arrays to hold supported and unsupported models
+        declare -a supported_models=()
+        declare -a unsupported_models=()
+
+        # Group the models into supported and unsupported
+        for key in "${!SUPPORTED_MODELS[@]}"; do
+            IFS='|' read -r full_name model chip <<< "$key"
+            if [[ "${SUPPORTED_MODELS[$key]}" == "Supported" ]]; then
+                supported_models+=("$full_name ($chip)")
+            else
+                unsupported_models+=("$full_name ($chip)")
+            fi
+        done
+
+        # Sort and print supported models
+        if [[ ${#supported_models[@]} -gt 0 ]]; then
+            printf "[DEBUG] Supported models:\n" >&2
+            for model in $(printf "%s\n" "${supported_models[@]}" | sort); do
+                printf "\t- %s\n" "$model" >&2
+            done
+        fi
+
+        # Sort and print unsupported models
+        if [[ ${#unsupported_models[@]} -gt 0 ]]; then
+            printf "[DEBUG] Unsupported models:\n" >&2
+            for model in $(printf "%s\n" "${unsupported_models[@]}" | sort); do
+                printf "\t- %s\n" "$model" >&2
+            done
+        fi
+    fi
+
+    # Log an error if no supported model was found
+    if [[ "$is_supported" == false ]]; then
+        debug_end "$debug"
+        die 1 "Detected Raspberry Pi model '$detected_model' is not recognized or supported."
+    fi
+
+    debug_end "$debug"
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# @brief Validate proxy connectivity by testing a known URL.
+# @details Uses `check_url` to verify connectivity through the provided proxy settings.
+#
+# @param $1 [Optional] Proxy URL to validate (defaults to `http_proxy` or `https_proxy` if not provided).
+# @param $2 [Optional] "debug" to enable verbose output for the proxy validation.
+#
+# @global http_proxy The HTTP proxy URL (if set).
+# @global https_proxy The HTTPS proxy URL (if set).
+#
+# @return 0 if the proxy is functional, 1 otherwise.
+#
+# @example
+# validate_proxy "http://myproxy.com:8080"
+# validate_proxy debug
+# -----------------------------------------------------------------------------
+validate_proxy() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    # Check if proxy_url is passed
+    local proxy_url=""
+    # Check if proxy_url is the first argument (if set)
+    if [[ -n "$1" && "$1" =~ ^https?:// ]]; then
+        # First argument is proxy_url
+        proxy_url="$1"
+        shift  # Move to the next argument
+    fi
+
+    # Default to global proxy settings if no proxy is provided
+    [[ -z "${proxy_url:-}" ]] && proxy_url="${http_proxy:-$https_proxy}"
+
+    # Validate that a proxy is set
+    if [[ -z "${proxy_url:-}" ]]; then
+        warn "No proxy URL configured for validation."
+            debug_end "$debug" 
+        return 1
+    fi
+
+    logI "Validating proxy: $proxy_url"
+
+    # Test the proxy connectivity using check_url (passing the debug flag)
+    if check_url "$proxy_url" "curl" "--silent --head --max-time 10 --proxy $proxy_url" "$debug"; then
+        logI "Proxy $proxy_url is functional."
+        debug_print "Proxy $proxy_url is functional." "$debug"
+            debug_end "$debug" 
+        return 0
+    else
+        warn "Proxy $proxy_url is unreachable or misconfigured."
+        debug_print "Proxy $proxy_url failed validation." "$debug"
+            debug_end "$debug" 
+        return 1
+    fi
+}
+
+# -----------------------------------------------------------------------------
+# @brief Check connectivity to a URL using a specified tool.
+# @details Attempts to connect to a given URL with `curl` or `wget` based on the
+#          provided arguments. Ensures that the tool's availability is checked
+#          and handles timeouts gracefully. Optionally prints debug information
+#          if the "debug" flag is set.
+#
+# @param $1 The URL to test.
+# @param $2 The tool to use for the test (`curl` or `wget`).
+# @param $3 Options to pass to the testing tool (e.g., `--silent --head` for `curl`).
+# @param $4 [Optional] "debug" to enable verbose output during the check.
+#
+# @return 0 if the URL is reachable, 1 otherwise.
+#
+# @example
+# check_url "http://example.com" "curl" "--silent --head" debug
+# -----------------------------------------------------------------------------
+check_url() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    local url="$1"
+    local tool="$2"
+    local options="$3"
+
+    # Validate inputs
+    if [[ -z "${url:-}" ]]; then
+        printf "ERROR: URL and tool parameters are required for check_url.\n" >&2
+            debug_end "$debug" 
+        return 1
+    fi
+
+    # Check tool availability
+    if ! command -v "$tool" &>/dev/null; then
+        printf "ERROR: Tool '%s' is not installed or unavailable.\n" "$tool" >&2
+            debug_end "$debug" 
+        return 1
+    fi
+
+    # Perform the connectivity check, allowing SSL and proxy errors
+    local retval
+    # shellcheck disable=2086
+    if $tool $options "$url" &>/dev/null; then
+        debug_print "Successfully connected to $#url using $tool." "$debug"
+        retval=0
+    else
+        debug_print "Failed to connect to $url using $tool." "$debug"
+        retval=1
+    fi
+
+    debug_end "$debug" 
+    return 0
+}
+
+# -----------------------------------------------------------------------------
+# @brief Comprehensive internet and proxy connectivity check.
+# @details Combines proxy validation and direct internet connectivity tests
+#          using `check_url`. Validates proxy configuration first, then
+#          tests connectivity with and without proxies. Outputs debug information if enabled.
+#
+# @param $1 [Optional] "debug" to enable verbose output for all checks.
+#
+# @global http_proxy Proxy URL for HTTP (if set).
+# @global https_proxy Proxy URL for HTTPS (if set).
+# @global no_proxy Proxy exclusions (if set).
+#
+# @return 0 if all tests pass, 1 if any test fails.
+#
+# @example
+# check_internet debug
+# -----------------------------------------------------------------------------
+check_internet() {
+    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
+
+    local primary_url="http://google.com"
+    local secondary_url="http://1.1.1.1"
+    local proxy_valid=false
+
+    # Validate proxy settings
+    if [[ -n "${http_proxy:-}" || -n "${https_proxy:-}" ]]; then
+        debug_print "Proxy detected. Validating proxy configuration." "$debug"
+        if validate_proxy "$debug"; then  # Pass debug flag to validate_proxy
+            proxy_valid=true
+            debug_print "Proxy validation succeeded." "$debug"
+        else
+            warn "Proxy validation failed. Proceeding with direct connectivity checks."
+        fi
+    fi
+
+    # Check connectivity using curl
+    if command -v curl &>/dev/null; then
+        debug_print "curl is available. Testing internet connectivity using curl." "$debug"
+
+        # Check with proxy
+        if $proxy_valid && curl --silent --head --max-time 10 --proxy "${http_proxy:-${https_proxy:-}}" "$primary_url" &>/dev/null; then
+            logI "Internet is available using curl with proxy."
+            debug_print "curl successfully connected via proxy." "$debug"
+                    debug_end "$debug" 
+            return 0
+        fi
+
+        # Check without proxy
+        if curl --silent --head --max-time 10 "$primary_url" &>/dev/null; then
+            debug_print "curl successfully connected without proxy." "$debug"
+                    debug_end "$debug" 
+            return 0
+        fi
+
+        debug_print "curl failed to connect." "$debug"
+    else
+        debug_print "curl is not available." "$debug"
+    fi
+
+    # Check connectivity using wget
+    if command -v wget &>/dev/null; then
+        debug_print "wget is available. Testing internet connectivity using wget." "$debug"
+
+        # Check with proxy
+        if $proxy_valid && wget --spider --quiet --timeout=10 --proxy="${http_proxy:-${https_proxy:-}}" "$primary_url" &>/dev/null; then
+            logI "Internet is available using wget with proxy."
+            debug_print "wget successfully connected via proxy." "$debug"
+                    debug_end "$debug" 
+            return 0
+        fi
+
+        # Check without proxy
+        if wget --spider --quiet --timeout=10 "$secondary_url" &>/dev/null; then
+            logI "Internet is available using wget without proxy."
+            debug_print "wget successfully connected without proxy." "$debug"
+                    debug_end "$debug" 
+            return 0
+        fi
+
+        debug_print "wget failed to connect." "$debug"
+    else
+        debug_print "wget is not available." "$debug"
+    fi
+
+    # Final failure message
+    warn "No internet connection detected after all checks."
+    debug_print "All internet connectivity tests failed." "$debug"
+    debug_end "$debug" 
+    return 1
+}
+
+############
+### Logging Functions
+############
+
+# -----------------------------------------------------------------------------
 # @brief Pads a number with leading spaces to achieve the desired width.
 # @details This function takes a number and a specified width, and returns the
 #          number formatted with leading spaces if necessary. The number is
@@ -1434,7 +2662,7 @@ pad_with_spaces() {
     # Format the number with leading spaces and return it as a string
     printf "%${width}d\n" "$number"
 
-    debug_end "$debug"  # Next line must be a return/print/exit out of function
+    debug_end "$debug"  
     return 0
 }
 
@@ -1540,1178 +2768,6 @@ wrap_messages() {
 }
 
 # -----------------------------------------------------------------------------
-# @brief Add a dot (`.`) at the beginning of a string if it's missing.
-# @details This function ensures the input string starts with a leading dot.
-#          If the input string is empty, the function logs a warning and returns
-#          an error code.
-#
-# @param $1 The input string to process.
-#
-# @return Outputs the modified string with a leading dot if it was missing.
-# @retval 1 If the input string is empty.
-#
-# @example
-# add_dot "example"   # Outputs ".example"
-# add_dot ".example"  # Outputs ".example"
-# add_dot ""          # Logs a warning and returns an error.
-# -----------------------------------------------------------------------------
-add_dot() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    local input=${1:-}  # Input string to process
-
-    # Validate input
-    if [[ -z "$input" ]]; then
-        warn "Input to add_dot cannot be empty."
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        return 1
-    fi
-
-    # Add a leading dot if it's missing
-    if [[ "$input" != .* ]]; then
-        input=".$input"
-    fi
-
-    debug_end "$debug" # Next line must be a return/print/exit out of function
-    printf "%s\n" "$input"
-}
-
-# -----------------------------------------------------------------------------
-# @brief Removes a leading dot from the input string, if present.
-# @details This function checks if the input string starts with a dot (`.`)
-#          and removes it. If the input is empty, an error message is logged.
-#          The function handles empty strings by returning an error and logging
-#          an appropriate warning message.
-#
-# @param $1 [required] The input string to process.
-#
-# @return 0 on success, 1 on failure (when the input is empty).
-#
-# @example
-# remove_dot ".hidden"  # Output: "hidden"
-# remove_dot "visible"  # Output: "visible"
-# -----------------------------------------------------------------------------
-remove_dot() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    local input=${1:-}  # Input string to process
-
-    # Validate input
-    if [[ -z "$input" ]]; then
-        warn "ERROR" "Input to remove_dot cannot be empty."
-        debug_end "$debug"  # Next line must be a return/print/exit from func
-        return 1
-    fi
-
-    # Remove the leading dot if present
-    if [[ "$input" == *. ]]; then
-        input="${input#.}"
-    fi
-
-    debug_end "$debug"  # Next line must be a return/print/exit out of function
-    printf "%s\n" "$input"
-}
-
-# -----------------------------------------------------------------------------
-# @brief Adds a period to the end of the input string if it doesn't already
-#        have one.
-# @details This function checks if the input string has a trailing period.
-#          If not, it appends one. If the input is empty, an error is logged.
-#
-# @param $1 [required] The input string to process.
-#
-# @return The input string with a period added at the end (if missing).
-# @return 1 If the input string is empty.
-#
-# @example
-# result=$(add_period "Hello")
-# echo "$result"  # Output: "Hello."
-# -----------------------------------------------------------------------------
-add_period() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    local input=${1:-}  # Input string to process
-
-    # Validate input
-    if [[ -z "$input" ]]; then
-        warn "Input to add_period cannot be empty."
-        debug_end "$debug" # Next line must be a return/print/exit
-        return 1
-    fi
-
-    # Add a trailing period if it's missing
-    if [[ "$input" != *. ]]; then
-        input="$input."
-    fi
-
-    debug_end "$debug"  # Next line must be a return/print/exit out of function
-    printf "%s\n" "$input"
-}
-
-# -----------------------------------------------------------------------------
-# @brief Remove a trailing period (`.`) from a string if present.
-# @details This function processes the input string and removes a trailing period
-#          if it exists. If the input string is empty, the function logs an error
-#          and returns an error code.
-#
-# @param $1 The input string to process.
-#
-# @return Outputs the modified string without a trailing period if one was present.
-# @retval 1 If the input string is empty.
-#
-# @example
-# remove_period "example."  # Outputs "example"
-# remove_period "example"   # Outputs "example"
-# remove_period ""          # Logs an error and returns an error code.
-# -----------------------------------------------------------------------------
-remove_period() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    local input=${1:-}  # Input string to process
-
-    # Validate input
-    if [[ -z "$input" ]]; then
-        warn "ERROR" "Input to remove_period cannot be empty."
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        return 1
-    fi
-
-    # Remove the trailing period if present
-    if [[ "$input" == *. ]]; then
-        input="${input%.}"
-    fi
-
-    debug_end "$debug" # Next line must be a return/print/exit out of function
-    printf "%s\n" "$input"
-}
-
-# -----------------------------------------------------------------------------
-# @brief Add a trailing slash (`/`) to a string if it's missing.
-# @details This function ensures that the input string ends with a trailing slash.
-#          If the input string is empty, the function logs an error and returns
-#          an error code.
-#
-# @param $1 The input string to process.
-#
-# @return Outputs the modified string with a trailing slash if one was missing.
-# @retval 1 If the input string is empty.
-#
-# @example
-# add_slash "/path/to/directory"  # Outputs "/path/to/directory/"
-# add_slash "/path/to/directory/" # Outputs "/path/to/directory/"
-# add_slash ""                    # Logs an error and returns an error code.
-# -----------------------------------------------------------------------------
-add_slash() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    local input="$1"  # Input string to process
-
-    # Validate input
-    if [[ -z "${input:-}" ]]; then
-        warn "ERROR" "Input to add_slash cannot be empty."
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        return 1
-    fi
-
-    # Add a trailing slash if it's missing
-    if [[ "$input" != */ ]]; then
-        input="$input/"
-    fi
-
-    debug_end "$debug" # Next line must be a return/print/exit out of function
-    printf "%s\n" "$input"
-}
-
-# -----------------------------------------------------------------------------
-# @brief Remove a trailing slash (`/`) from a string if present.
-# @details This function ensures that the input string does not end with a trailing
-#          slash. If the input string is empty, the function logs an error and
-#          returns an error code.
-#
-# @param $1 The input string to process.
-#
-# @return Outputs the modified string without a trailing slash if one was present.
-# @retval 1 If the input string is empty.
-#
-# @example
-# remove_slash "/path/to/directory/"  # Outputs "/path/to/directory"
-# remove_slash "/path/to/directory"   # Outputs "/path/to/directory"
-# remove_slash ""                     # Logs an error and returns an error code.
-# -----------------------------------------------------------------------------
-remove_slash() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    local input="$1"  # Input string to process
-
-    # Validate input
-    if [[ -z "${input:-}" ]]; then
-        warn "ERROR" "Input to remove_slash cannot be empty."
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        return 1
-    fi
-
-    # Remove the trailing slash if present
-    if [[ "$input" == */ ]]; then
-        input="${input%/}"
-    fi
-
-    debug_end "$debug" # Next line must be a return/print/exit out of function
-    printf "%s\n" "$input"
-}
-
-# -----------------------------------------------------------------------------
-# @brief Pauses execution and waits for user input to continue.
-# @details This function displays a message prompting the user to press any key
-#          to continue. It waits for a single key press, then resumes execution.
-#
-# @example
-# pause
-# -----------------------------------------------------------------------------
-pause() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    printf "Press any key to continue.\n"
-    read -n 1 -sr key < /dev/tty || true
-    printf "\n"
-    debug_print "$key" "$debug"
-
-    debug_end "$debug" # Next line must be a return/print/exit out of function
-    return 0
-}
-
-############
-### Print/Display Environment Functions
-############
-
-# -----------------------------------------------------------------------------
-# @brief Print the system information to the log.
-# @details Extracts and logs the system's name and version using information
-#          from `/etc/os-release`. If the information cannot be extracted, logs
-#          a warning message. Includes debug output when the `debug` argument is provided.
-#
-# @param $1 [Optional] Debug flag to enable detailed output (`debug`).
-#
-# @global None
-#
-# @return None
-#
-# @example
-# print_system debug
-# Outputs system information with debug logs enabled.
-# -----------------------------------------------------------------------------
-# shellcheck disable=2329
-print_system() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    # Declare local variables
-    local system_name
-
-    # Extract system name and version from /etc/os-release
-    system_name=$(grep '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d '=' -f2 | tr -d '"')
-
-    # Debug: Log extracted system name
-    debug_print "Extracted system name: ${system_name:-<empty>}\n" "$debug"
-
-    # Check if system_name is empty and log accordingly
-    if [[ -z "${system_name:-}" ]]; then
-        warn "System: Unknown (could not extract system information)."  # Log warning if system information is unavailable
-        debug_print "System information could not be extracted." "$debug"
-    else
-        logI "System: $system_name."  # Log the system information
-        debug_print "Logged system information: $system_name" "$debug"
-    fi
-
-    debug_end "$debug" # Next line must be a return/print/exit out of function
-    return 0
-}
-
-# -----------------------------------------------------------------------------
-# @brief Print the script version and optionally log it.
-# @details This function displays the version of the script stored in the global
-#          variable `SEM_VER`. If called by `process_args`, it uses `printf` to
-#          display the version; otherwise, it logs the version using `logI`.
-#          If the debug flag is set to "debug," additional debug information
-#          will be printed.
-#
-# @param $1 [Optional] Debug flag. Pass "debug" to enable debug output.
-#
-# @global THIS_SCRIPT The name of the script.
-# @global SEM_VER The version of the script.
-# @global REPO_NAME The name of the repository.
-#
-# @return None
-#
-# @example
-# print_version debug
-# -----------------------------------------------------------------------------
-print_version() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    # Check the name of the calling function
-    local caller="${FUNCNAME[1]}"
-
-    if [[ "$caller" == "process_args" ]]; then
-        printf "%s: version %s\n" "$THIS_SCRIPT" "$SEM_VER" # Display the script name and version
-    else
-        logI "Running $(repo_to_title_case "$REPO_NAME")'s '$THIS_SCRIPT', version $SEM_VER" # Log the script name and version
-    fi
-
-    debug_end "$debug" # Next line must be a return/print/exit out of function
-    return 0
-}
-
-############
-### Check Environment Functions
-############
-
-# -----------------------------------------------------------------------------
-# @brief Determine the script's execution context.
-# @details Identifies how the script was executed, returning one of the
-#          predefined context codes. Handles errors gracefully and outputs
-#          additional debugging information when the "debug" argument is passed.
-#
-# Context Codes:
-#   - `0`: Script executed via pipe.
-#   - `1`: Script executed with `bash` in an unusual way.
-#   - `2`: Script executed directly (local or from PATH).
-#   - `3`: Script executed from within a GitHub repository.
-#   - `4`: Script executed from a PATH location.
-#
-# @param $1 [Optional] Pass "debug" to enable verbose logging for debugging purposes.
-#
-# @throws Exits with an error if the script path cannot be resolved or
-#         directory traversal exceeds the maximum depth.
-#
-# @return Returns a context code (described above) indicating the script's
-#         execution context.
-# -----------------------------------------------------------------------------
-determine_execution_context() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    local script_path   # Full path of the script
-    local current_dir   # Temporary variable to traverse directories
-    local max_depth=10  # Limit for directory traversal depth
-    local depth=0       # Counter for directory traversal
-
-    # Check if the script is executed via pipe
-    if [[ "$0" == "bash" ]]; then
-        if [[ -p /dev/stdin ]]; then
-            debug_print "Execution context: Script executed via pipe." "$debug"
-                    debug_end "$debug" # Next line must be a return/print/exit out of function
-            return 0  # Execution via pipe
-        else
-            warn "Unusual bash execution detected."
-                    debug_end "$debug" # Next line must be a return/print/exit out of function
-            return 1  # Unusual bash execution
-        fi
-    fi
-
-    # Get the script path
-    script_path=$(realpath "$0" 2>/dev/null) || script_path=$(pwd)/$(basename "$0")
-    if [[ ! -f "$script_path" ]]; then
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        die 1 "Unable to resolve script path: $script_path"
-    fi
-    debug_print "Resolved script path: $script_path" "$debug"
-
-    # Initialize current_dir with the directory part of script_path
-    current_dir="${script_path%/*}"
-    current_dir="${current_dir:-.}"
-
-    # Safeguard against invalid current_dir during initialization
-    if [[ ! -d "$current_dir" ]]; then
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        die 1 "Invalid starting directory: $current_dir"
-    fi
-
-    # Traverse upwards to detect a GitHub repository
-    while [[ "$current_dir" != "/" && $depth -lt $max_depth ]]; do
-        if [[ -d "$current_dir/.git" ]]; then
-            debug_print "GitHub repository detected at depth $depth: $current_dir" "$debug"
-                    debug_end "$debug" # Next line must be a return/print/exit out of function
-            return 3  # Execution within a GitHub repository
-        fi
-        current_dir=$(dirname "$current_dir") # Move up one directory
-        ((depth++))
-    done
-
-    # Handle loop termination conditions
-    if [[ $depth -ge $max_depth ]]; then
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        die 1 "Directory traversal exceeded maximum depth ($max_depth)"
-    fi
-
-    # Check if the script is executed from a PATH location
-    local resolved_path
-    resolved_path=$(command -v "$(basename "$0")" 2>/dev/null)
-    if [[ "$resolved_path" == "$script_path" ]]; then
-        debug_print "Script executed from a PATH location: $resolved_path." "$debug"
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        return 4  # Execution from a PATH location
-    fi
-
-    # Default: Direct execution from the local filesystem
-    debug_print "Default context: Script executed directly." "$debug"
-
-    debug_end "$debug" # Next line must be a return/print/exit out of function
-    return 2
-}
-
-# -----------------------------------------------------------------------------
-# @brief Handle the execution context of the script.
-# @details Determines the script's execution context by invoking
-#          `determine_execution_context` and sets global variables based on
-#          the context. Outputs debug information if the "debug" argument is
-#          passed. Provides safeguards for unknown or invalid context codes.
-#
-# @param $1 [Optional] Pass "debug" to enable verbose logging for debugging purposes.
-#
-# @throws Exits with an error if an invalid context code is returned.
-#
-# @return None
-# -----------------------------------------------------------------------------
-handle_execution_context() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    # Call determine_execution_context and capture its output
-    determine_execution_context "$debug"
-    local context=$?  # Capture the return code to determine context
-
-    # Validate the context
-    if ! [[ "$context" =~ ^[0-4]$ ]]; then
-        debug_end "$debug" # Next line must be a return/print/exit out of function
-        die 1 "Invalid context code returned: $context"
-    fi
-
-    # Initialize and set global variables based on the context
-    case $context in
-        0)
-            THIS_SCRIPT="piped_script"
-            USE_LOCAL=false
-            IS_REPO=false
-            IS_PATH=false
-            debug_print "Execution context: Script was piped (e.g., 'curl url | sudo bash')." "$debug"
-            ;;
-        1)
-            THIS_SCRIPT="piped_script"
-            USE_LOCAL=false
-            IS_REPO=false
-            IS_PATH=false
-            warn "Execution context: Script run with 'bash' in an unusual way."
-            ;;
-        2)
-            THIS_SCRIPT=$(basename "$0")
-            USE_LOCAL=true
-            IS_REPO=false
-            IS_PATH=false
-            debug_print "Execution context: Script executed directly from $THIS_SCRIPT." "$debug"
-            ;;
-        3)
-            THIS_SCRIPT=$(basename "$0")
-            USE_LOCAL=true
-            IS_REPO=true
-            IS_PATH=false
-            debug_print "Execution context: Script is within a GitHub repository."\n" >&2" "$debug"
-            ;;
-        4)
-            THIS_SCRIPT=$(basename "$0")
-            USE_LOCAL=true
-            IS_REPO=false
-            IS_PATH=true
-            debug_print "Execution context: Script executed from a PATH location ($(command -v "$THIS_SCRIPT"))" "$debug"
-            ;;
-        *)
-                    debug_end "$debug" # Next line must be a return/print/exit out of function
-            die 99 "Unknown execution context."
-            ;;
-    esac
-
-    debug_end "$debug" # Next line must be a return/print/exit out of function
-    return 0
-}
-
-# -----------------------------------------------------------------------------
-# @brief Enforce that the script is run directly with `sudo`.
-# @details Ensures the script is executed with `sudo` privileges and not:
-#          - From a `sudo su` shell.
-#          - As the root user directly.
-#
-# @global REQUIRE_SUDO Boolean indicating if `sudo` is required.
-# @global SUDO_USER User invoking `sudo`.
-# @global SUDO_COMMAND The command invoked with `sudo`.
-# @global THIS_SCRIPT Name of the current script.
-#
-# @param $1 [Optional] Debug flag. Pass "debug" to enable debug output.
-#
-# @return None
-# @exit 1 if the script is not executed correctly.
-#
-# @example
-# enforce_sudo debug
-# -----------------------------------------------------------------------------
-enforce_sudo() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    if [[ "$REQUIRE_SUDO" == true ]]; then
-        if [[ "$EUID" -eq 0 && -n "$SUDO_USER" && "$SUDO_COMMAND" == *"$0"* ]]; then
-            debug_print "Sudo conditions met. Proceeding." "$debug"
-            # Script is properly executed with `sudo`
-        elif [[ "$EUID" -eq 0 && -n "$SUDO_USER" ]]; then
-            debug_print "Script run from a root shell. Exiting." "$debug"
-            die 1 "This script should not be run from a root shell." \
-                  "Run it with 'sudo $THIS_SCRIPT' as a regular user."
-        elif [[ "$EUID" -eq 0 ]]; then
-            debug_print "Script run as root. Exiting." "$debug"
-            die 1 "This script should not be run as the root user." \
-                  "Run it with 'sudo $THIS_SCRIPT' as a regular user."
-        else
-            debug_print "Script not run with sudo. Exiting." "$debug"
-            die 1 "This script requires 'sudo' privileges." \
-                  "Please re-run it using 'sudo $THIS_SCRIPT'."
-        fi
-    fi
-
-    debug_print "Function parameters:" \
-        "\n\t- REQUIRE_SUDO='${REQUIRE_SUDO:-(not set)}'" \
-        "\n\t- EUID='$EUID'" \
-        "\n\t- SUDO_USER='${SUDO_USER:-(not set)}'" \
-        "\n\t- SUDO_COMMAND='${SUDO_COMMAND:-(not set)}'" "$debug"
-
-    debug_end "$debug" # Next line must be a return/print/exit out of function
-    return 0
-}
-
-# -----------------------------------------------------------------------------
-# @brief Check for required dependencies and report any missing ones.
-# @details Iterates through the dependencies listed in the global array `DEPENDENCIES`,
-#          checking if each one is installed. Logs missing dependencies and exits
-#          the script with an error code if any are missing.
-#
-# @param $1 [Optional] Debug flag. Pass "debug" to enable debug output.
-#
-# @global DEPENDENCIES Array of required dependencies.
-#
-# @return None
-# @exit 1 if any dependencies are missing.
-#
-# @example
-# validate_depends debug
-# -----------------------------------------------------------------------------
-validate_depends() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    # Declare local variables
-    local missing=0  # Counter for missing dependencies
-    local dep        # Iterator for dependencies
-
-    # Iterate through dependencies
-    for dep in "${DEPENDENCIES[@]}"; do
-        if ! command -v "$dep" &>/dev/null; then
-            warn "Missing dependency: $dep"
-            ((missing++))
-            debug_print "Missing dependency: $dep" "$debug"
-        else
-            debug_print "Found dependency: $dep" "$debug"
-        fi
-    done
-
-    # Handle missing dependencies
-    if ((missing > 0)); then
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        die 1 "Missing $missing dependencies. Install them and re-run the script."
-    fi
-
-    debug_print "All dependencies are present." "$debug"
-
-    debug_end "$debug" # Next line must be a return/print/exit out of function
-    return 0
-}
-
-# -----------------------------------------------------------------------------
-# @brief Check the availability of critical system files.
-# @details Verifies that each file listed in the `SYSTEM_READS` array exists and is readable.
-#          Logs an error for any missing or unreadable files and exits the script if any issues are found.
-#
-# @param $1 [Optional] Debug flag. Pass "debug" to enable debug output.
-#
-# @global SYSTEM_READS Array of critical system file paths to check.
-#
-# @return None
-# @exit 1 if any required files are missing or unreadable.
-#
-# @example
-# validate_sys_accs debug
-# -----------------------------------------------------------------------------
-validate_sys_accs() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    # Declare local variables
-    local missing=0  # Counter for missing or unreadable files
-    local file       # Iterator for files
-
-    # Iterate through system files
-    for file in "${SYSTEM_READS[@]}"; do
-        if [[ ! -r "$file" ]]; then
-            warn "Missing or unreadable file: $file"
-            ((missing++))
-            debug_print "Missing or unreadable file: $file" "$debug"
-        else
-            debug_print "File is accessible: $file" "$debug"
-        fi
-    done
-
-    # Handle missing files
-    if ((missing > 0)); then
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        die 1 "Missing or unreadable $missing critical system files."
-    fi
-
-    debug_print "All critical system files are accessible." "$debug"
-
-    debug_end "$debug" # Next line must be a return/print/exit out of function
-    return 0
-}
-
-# -----------------------------------------------------------------------------
-# @brief Validate the existence of required environment variables.
-# @details Checks if the environment variables specified in the `ENV_VARS` array
-#          are set. Logs any missing variables and exits the script if any are missing.
-#
-# @param $1 [Optional] Debug flag. Pass "debug" to enable debug output.
-#
-# @global ENV_VARS Array of required environment variables.
-#
-# @return None
-# @exit 1 if any environment variables are missing.
-#
-# @example
-# validate_env_vars debug
-# -----------------------------------------------------------------------------
-validate_env_vars() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    # Declare local variables
-    local missing=0  # Counter for missing environment variables
-    local var        # Iterator for environment variables
-
-    # Iterate through environment variables
-    for var in "${ENV_VARS[@]}"; do
-        if [[ -z "${!var:-}" ]]; then
-            printf "ERROR: Missing environment variable: %s\n" "$var" >&2
-            ((missing++))
-            debug_print "Missing environment variable: $var" "$debug"
-        else
-            debug_print "Environment variable is set: $var=${!var}" "$debug"
-        fi
-    done
-
-    # Handle missing variables
-    if ((missing > 0)); then
-        printf "ERROR: Missing %d required environment variables. Ensure all required environment variables are set and re-run the script.\n" "$missing" >&2
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        exit 1
-    fi
-
-    debug_end "$debug" # Next line must be a return/print/exit out of function
-    return 0
-}
-
-# -----------------------------------------------------------------------------
-# @brief Check if the script is running in a Bash shell.
-# @details Ensures the script is executed with Bash, as it may use Bash-specific features.
-#          If the "debug" argument is passed, detailed logging will be displayed for each check.
-#
-# @param $1 [Optional] "debug" to enable verbose output for all checks.
-#
-# @global BASH_VERSION The version of the Bash shell being used.
-#
-# @return None
-# @exit 1 if not running in Bash.
-#
-# @example
-# check_bash
-# check_bash debug
-# -----------------------------------------------------------------------------
-check_bash() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    # Ensure the script is running in a Bash shell
-    if [[ -z "${BASH_VERSION:-}" ]]; then
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        die 1 "This script requires Bash. Please run it with Bash."
-    fi
-
-    debug_end "$debug" # Next line must be a return/print/exit out of function
-    return 0
-}
-
-# -----------------------------------------------------------------------------
-# @brief Check if the current Bash version meets the minimum required version.
-# @details Compares the current Bash version against a required version specified
-#          in the global variable `MIN_BASH_VERSION`. If `MIN_BASH_VERSION` is "none",
-#          the check is skipped. Outputs debug information if enabled.
-#
-# @param $1 [Optional] "debug" to enable verbose output for this check.
-#
-# @global MIN_BASH_VERSION Minimum required Bash version (e.g., "4.0") or "none".
-# @global BASH_VERSINFO Array containing the major and minor versions of the running Bash.
-#
-# @return None
-# @exit 1 if the Bash version is insufficient.
-#
-# @example
-# check_sh_ver
-# check_sh_ver debug
-# -----------------------------------------------------------------------------
-check_sh_ver() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    local required_version="${MIN_BASH_VERSION:-none}"
-
-    # If MIN_BASH_VERSION is "none", skip version check
-    if [[ "$required_version" == "none" ]]; then
-        debug_print "Bash version check is disabled (MIN_BASH_VERSION='none')." "$debug"
-    else
-        debug_print "Minimum required Bash version is set to '$required_version'." "$debug"
-
-        # Extract the major and minor version components from the required version
-        local required_major="${required_version%%.*}"
-        local required_minor="${required_version#*.}"
-        required_minor="${required_minor%%.*}"
-
-        # Log current Bash version for debugging
-        debug_print "Current Bash version is ${BASH_VERSINFO[0]}.${BASH_VERSINFO[1]}." "$debug"
-
-        # Compare the current Bash version with the required version
-        if (( BASH_VERSINFO[0] < required_major ||
-              (BASH_VERSINFO[0] == required_major && BASH_VERSINFO[1] < required_minor) )); then
-                    debug_end "$debug" # Next line must be a return/print/exit out of function
-            die 1 "This script requires Bash version $required_version or newer."
-        fi
-    fi
-
-    debug_end "$debug" # Next line must be a return/print/exit out of function
-    return 0
-}
-
-# -----------------------------------------------------------------------------
-# @brief Check system bitness compatibility.
-# @details Validates whether the current system's bitness matches the supported
-#          configuration. Outputs debug information if debug mode is enabled.
-#
-# @param $1 [Optional] "debug" to enable verbose output for the check.
-#
-# @global SUPPORTED_BITNESS Specifies the bitness supported by the script ("32", "64", or "both").
-#
-# @return None
-# @exit 1 if the system bitness is unsupported.
-#
-# @example
-# check_bitness
-# check_bitness debug
-# -----------------------------------------------------------------------------
-check_bitness() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    local bitness  # Stores the detected bitness of the system.
-
-    # Detect the system bitness
-    bitness=$(getconf LONG_BIT)
-
-    # Debugging: Detected system bitness
-    debug_print "Detected system bitness: $bitness-bit." "$debug"
-
-    case "$SUPPORTED_BITNESS" in
-        "32")
-            debug_print "Script supports only 32-bit systems." "$debug"
-            if [[ "$bitness" -ne 32 ]]; then
-                            debug_end "$debug" # Next line must be a return/print/exit out of function
-                die 1 "Only 32-bit systems are supported. Detected $bitness-bit system."
-            fi
-            ;;
-        "64")
-            debug_print "Script supports only 64-bit systems." "$debug"
-            if [[ "$bitness" -ne 64 ]]; then
-                            debug_end "$debug" # Next line must be a return/print/exit out of function
-                die 1 "Only 64-bit systems are supported. Detected $bitness-bit system."
-            fi
-            ;;
-        "both")
-            debug_print "Script supports both 32-bit and 64-bit systems." "$debug"
-            ;;
-        *)
-            debug_print "Invalid SUPPORTED_BITNESS configuration: '$SUPPORTED_BITNESS'." "$debug"
-                    debug_end "$debug" # Next line must be a return/print/exit out of function
-            die 1 "Configuration error: Invalid value for SUPPORTED_BITNESS ('$SUPPORTED_BITNESS')."
-            ;;
-    esac
-
-    debug_end "$debug" # Next line must be a return/print/exit out of function
-    return 0
-}
-
-# -----------------------------------------------------------------------------
-# @brief Check Raspbian OS version compatibility.
-# @details This function ensures that the Raspbian version is within the supported
-#          range and logs an error if the compatibility check fails.
-#
-# @param $1 [Optional] "debug" to enable verbose output for this check.
-#
-# @global MIN_OS Minimum supported OS version.
-# @global MAX_OS Maximum supported OS version (-1 indicates no upper limit).
-# @global log_message Function for logging messages.
-# @global die Function to handle critical errors and terminate the script.
-#
-# @return None Exits the script with an error code if the OS version is incompatible.
-#
-# @example
-# check_release
-# check_release debug
-# -----------------------------------------------------------------------------
-check_release() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    local ver  # Holds the extracted version ID from /etc/os-release.
-
-    # Ensure the file exists and is readable.
-    if [[ ! -f /etc/os-release || ! -r /etc/os-release ]]; then
-        die 1 "Unable to read /etc/os-release. Ensure this script is run on a compatible system."
-    fi
-
-    # Extract the VERSION_ID from /etc/os-release.
-    if [[ -f /etc/os-release ]]; then
-        ver=$(grep "VERSION_ID" /etc/os-release | awk -F "=" '{print $2}' | tr -d '"')
-    else
-        warn "File /etc/os-release not found."
-        ver="unknown"
-    fi
-    debug_print "Raspbian version '$ver' detected." "$debug"
-
-    # Ensure the extracted version is not empty.
-    if [[ -z "${ver:-}" ]]; then
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        die 1 "VERSION_ID is missing or empty in /etc/os-release."
-    fi
-
-    # Check if the version is older than the minimum supported version.
-    if [[ "$ver" -lt "$MIN_OS" ]]; then
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        die 1 "Raspbian version $ver is older than the minimum supported version ($MIN_OS)."
-    fi
-
-    # Check if the version is newer than the maximum supported version, if applicable.
-    if [[ "$MAX_OS" -ne -1 && "$ver" -gt "$MAX_OS" ]]; then
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        die 1 "Raspbian version $ver is newer than the maximum supported version ($MAX_OS)."
-    fi
-
-    debug_end "$debug" # Next line must be a return/print/exit out of function
-    return 0
-}
-
-# -----------------------------------------------------------------------------
-# @brief Check if the detected Raspberry Pi model is supported.
-# @details Reads the Raspberry Pi model from /proc/device-tree/compatible and checks
-#          it against a predefined list of supported models. Logs an error if the
-#          model is unsupported or cannot be detected. Optionally outputs debug information
-#          about all models if `debug` is set to `true`.
-#
-# @param $1 [Optional] "debug" to enable verbose output for all supported/unsupported models.
-#
-# @global SUPPORTED_MODELS Associative array of supported and unsupported Raspberry Pi models.
-# @global log_message Function for logging messages.
-# @global die Function to handle critical errors and terminate the script.
-#
-# @return None Exits the script with an error code if the architecture is unsupported.
-#
-# @example
-# check_arch
-# check_arch debug
-# -----------------------------------------------------------------------------
-check_arch() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    local detected_model is_supported key full_name model chip this_model this_chip
-
-    # Read and process the compatible string
-    if ! detected_model=$(cat /proc/device-tree/compatible 2>/dev/null | tr '\0' '\n' | grep "raspberrypi" | sed 's/raspberrypi,//'); then
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        die 1 "Failed to read or process /proc/device-tree/compatible. Ensure compatibility."
-    fi
-
-    # Check if the detected model is empty
-    if [[ -z "${detected_model:-}" ]]; then
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        die 1 "No Raspberry Pi model found in /proc/device-tree/compatible. This system may not be supported."
-    fi
-    debug_print "Detected model: $detected_model" "$debug"
-
-    # Initialize is_supported flag
-    is_supported=false
-
-    # Iterate through supported models to check compatibility
-    for key in "${!SUPPORTED_MODELS[@]}"; do
-        IFS='|' read -r full_name model chip <<< "$key"
-        if [[ "$model" == "$detected_model" ]]; then
-            if [[ "${SUPPORTED_MODELS[$key]}" == "Supported" ]]; then
-                is_supported=true
-                this_model="$full_name"
-                this_chip="$chip"
-                debug_print "Model: '$full_name' ($chip) is supported." "$debug"
-            else
-                            debug_end "$debug" # Next line must be a return/print/exit out of function
-                die 1 "Model: '$full_name' ($chip) is not supported."
-            fi
-            break
-        fi
-    done
-
-    # Debug output of all models if requested
-    if [[ "$debug" == "debug" ]]; then
-        # Arrays to hold supported and unsupported models
-        declare -a supported_models=()
-        declare -a unsupported_models=()
-
-        # Group the models into supported and unsupported
-        for key in "${!SUPPORTED_MODELS[@]}"; do
-            IFS='|' read -r full_name model chip <<< "$key"
-            if [[ "${SUPPORTED_MODELS[$key]}" == "Supported" ]]; then
-                supported_models+=("$full_name ($chip)")
-            else
-                unsupported_models+=("$full_name ($chip)")
-            fi
-        done
-
-        # Sort and print supported models
-        if [[ ${#supported_models[@]} -gt 0 ]]; then
-            printf "[DEBUG] Supported models:\n" >&2
-            for model in $(printf "%s\n" "${supported_models[@]}" | sort); do
-                printf "\t- %s\n" "$model" >&2
-            done
-        fi
-
-        # Sort and print unsupported models
-        if [[ ${#unsupported_models[@]} -gt 0 ]]; then
-            printf "[DEBUG] Unsupported models:\n" >&2
-            for model in $(printf "%s\n" "${unsupported_models[@]}" | sort); do
-                printf "\t- %s\n" "$model" >&2
-            done
-        fi
-    fi
-
-    # Log an error if no supported model was found
-    if [[ "$is_supported" == false ]]; then
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        die 1 "Detected Raspberry Pi model '$detected_model' is not recognized or supported."
-    fi
-
-    debug_end "$debug" # Next line must be a return/print/exit out of function
-    return 0
-}
-
-# -----------------------------------------------------------------------------
-# @brief Validate proxy connectivity by testing a known URL.
-# @details Uses `check_url` to verify connectivity through the provided proxy settings.
-#
-# @param $1 [Optional] Proxy URL to validate (defaults to `http_proxy` or `https_proxy` if not provided).
-# @param $2 [Optional] "debug" to enable verbose output for the proxy validation.
-#
-# @global http_proxy The HTTP proxy URL (if set).
-# @global https_proxy The HTTPS proxy URL (if set).
-#
-# @return 0 if the proxy is functional, 1 otherwise.
-#
-# @example
-# validate_proxy "http://myproxy.com:8080"
-# validate_proxy debug
-# -----------------------------------------------------------------------------
-validate_proxy() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    # Check if proxy_url is passed
-    local proxy_url=""
-    # Check if proxy_url is the first argument (if set)
-    if [[ -n "$1" && "$1" =~ ^https?:// ]]; then
-        # First argument is proxy_url
-        proxy_url="$1"
-        shift  # Move to the next argument
-    fi
-
-    # Default to global proxy settings if no proxy is provided
-    [[ -z "${proxy_url:-}" ]] && proxy_url="${http_proxy:-$https_proxy}"
-
-    # Validate that a proxy is set
-    if [[ -z "${proxy_url:-}" ]]; then
-        warn "No proxy URL configured for validation."
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        return 1
-    fi
-
-    logI "Validating proxy: $proxy_url"
-
-    # Test the proxy connectivity using check_url (passing the debug flag)
-    if check_url "$proxy_url" "curl" "--silent --head --max-time 10 --proxy $proxy_url" "$debug"; then
-        logI "Proxy $proxy_url is functional."
-        debug_print "Proxy $proxy_url is functional." "$debug"
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        return 0
-    else
-        warn "Proxy $proxy_url is unreachable or misconfigured."
-        debug_print "Proxy $proxy_url failed validation." "$debug"
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        return 1
-    fi
-}
-
-# -----------------------------------------------------------------------------
-# @brief Check connectivity to a URL using a specified tool.
-# @details Attempts to connect to a given URL with `curl` or `wget` based on the
-#          provided arguments. Ensures that the tool's availability is checked
-#          and handles timeouts gracefully. Optionally prints debug information
-#          if the "debug" flag is set.
-#
-# @param $1 The URL to test.
-# @param $2 The tool to use for the test (`curl` or `wget`).
-# @param $3 Options to pass to the testing tool (e.g., `--silent --head` for `curl`).
-# @param $4 [Optional] "debug" to enable verbose output during the check.
-#
-# @return 0 if the URL is reachable, 1 otherwise.
-#
-# @example
-# check_url "http://example.com" "curl" "--silent --head" debug
-# -----------------------------------------------------------------------------
-check_url() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    local url="$1"
-    local tool="$2"
-    local options="$3"
-
-    # Validate inputs
-    if [[ -z "${url:-}" ]]; then
-        printf "ERROR: URL and tool parameters are required for check_url.\n" >&2
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        return 1
-    fi
-
-    # Check tool availability
-    if ! command -v "$tool" &>/dev/null; then
-        printf "ERROR: Tool '%s' is not installed or unavailable.\n" "$tool" >&2
-            debug_end "$debug" # Next line must be a return/print/exit out of function
-        return 1
-    fi
-
-    # Perform the connectivity check, allowing SSL and proxy errors
-    local retval
-    # shellcheck disable=2086
-    if $tool $options "$url" &>/dev/null; then
-        debug_print "Successfully connected to $#url using $tool." "$debug"
-        retval=0
-    else
-        debug_print "Failed to connect to $url using $tool." "$debug"
-        retval=1
-    fi
-
-    debug_end "$debug" # Next line must be a return/print/exit out of function
-    return 0
-}
-
-# -----------------------------------------------------------------------------
-# @brief Comprehensive internet and proxy connectivity check.
-# @details Combines proxy validation and direct internet connectivity tests
-#          using `check_url`. Validates proxy configuration first, then
-#          tests connectivity with and without proxies. Outputs debug information if enabled.
-#
-# @param $1 [Optional] "debug" to enable verbose output for all checks.
-#
-# @global http_proxy Proxy URL for HTTP (if set).
-# @global https_proxy Proxy URL for HTTPS (if set).
-# @global no_proxy Proxy exclusions (if set).
-#
-# @return 0 if all tests pass, 1 if any test fails.
-#
-# @example
-# check_internet debug
-# -----------------------------------------------------------------------------
-check_internet() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    local primary_url="http://google.com"
-    local secondary_url="http://1.1.1.1"
-    local proxy_valid=false
-
-    # Validate proxy settings
-    if [[ -n "${http_proxy:-}" || -n "${https_proxy:-}" ]]; then
-        debug_print "Proxy detected. Validating proxy configuration." "$debug"
-        if validate_proxy "$debug"; then  # Pass debug flag to validate_proxy
-            proxy_valid=true
-            debug_print "Proxy validation succeeded." "$debug"
-        else
-            warn "Proxy validation failed. Proceeding with direct connectivity checks."
-        fi
-    fi
-
-    # Check connectivity using curl
-    if command -v curl &>/dev/null; then
-        debug_print "curl is available. Testing internet connectivity using curl." "$debug"
-
-        # Check with proxy
-        if $proxy_valid && curl --silent --head --max-time 10 --proxy "${http_proxy:-${https_proxy:-}}" "$primary_url" &>/dev/null; then
-            logI "Internet is available using curl with proxy."
-            debug_print "curl successfully connected via proxy." "$debug"
-                    debug_end "$debug" # Next line must be a return/print/exit out of function
-            return 0
-        fi
-
-        # Check without proxy
-        if curl --silent --head --max-time 10 "$primary_url" &>/dev/null; then
-            debug_print "curl successfully connected without proxy." "$debug"
-                    debug_end "$debug" # Next line must be a return/print/exit out of function
-            return 0
-        fi
-
-        debug_print "curl failed to connect." "$debug"
-    else
-        debug_print "curl is not available." "$debug"
-    fi
-
-    # Check connectivity using wget
-    if command -v wget &>/dev/null; then
-        debug_print "wget is available. Testing internet connectivity using wget." "$debug"
-
-        # Check with proxy
-        if $proxy_valid && wget --spider --quiet --timeout=10 --proxy="${http_proxy:-${https_proxy:-}}" "$primary_url" &>/dev/null; then
-            logI "Internet is available using wget with proxy."
-            debug_print "wget successfully connected via proxy." "$debug"
-                    debug_end "$debug" # Next line must be a return/print/exit out of function
-            return 0
-        fi
-
-        # Check without proxy
-        if wget --spider --quiet --timeout=10 "$secondary_url" &>/dev/null; then
-            logI "Internet is available using wget without proxy."
-            debug_print "wget successfully connected without proxy." "$debug"
-                    debug_end "$debug" # Next line must be a return/print/exit out of function
-            return 0
-        fi
-
-        debug_print "wget failed to connect." "$debug"
-    else
-        debug_print "wget is not available." "$debug"
-    fi
-
-    # Final failure message
-    warn "No internet connection detected after all checks."
-    debug_print "All internet connectivity tests failed." "$debug"
-    debug_end "$debug" # Next line must be a return/print/exit out of function
-    return 1
-}
-
-############
-### Logging Functions
-############
-
-# -----------------------------------------------------------------------------
 # @brief Log a message with optional details to the console and/or file.
 # @details Handles combined logic for logging to console and/or file, supporting
 #          optional details. If details are provided, they are logged with an
@@ -2743,7 +2799,7 @@ print_log_entry() {
 
     # Skip logging if the message is empty
     if [[ -z "$message" ]]; then
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+            debug_end "$debug" 
         return 1
     fi
 
@@ -2757,7 +2813,7 @@ print_log_entry() {
         printf "%b[%s]%b %s\\n" "$color" "$level" "$RESET" "$message"
     fi
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -2794,7 +2850,7 @@ prepare_log_context() {
     # Return the pipe-separated timestamp and line number
     printf "%s|%s\n" "$timestamp" "$lineno"
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -2827,7 +2883,7 @@ log_message() {
     # Ensure the calling function is log_message_with_severity()
     if [[ "${FUNCNAME[1]}" != "log_message_with_severity" ]]; then
         warn "log_message() can only be called from log_message_with_severity()."
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+            debug_end "$debug" 
         return 1
     fi
 
@@ -2851,7 +2907,7 @@ log_message() {
     # Validate the log level and message if needed
     if [[ "$level" == "UNSET" || -z "${LOG_PROPERTIES[$level]:-}" || "$message" == "<no message>" ]]; then
         warn "Invalid log level '$level' or empty message."
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+            debug_end "$debug" 
         return 1
     fi
 
@@ -2876,20 +2932,20 @@ log_message() {
     # Check for valid severity level
     if [[ -z "$config_severity" || ! "$config_severity" =~ ^[0-9]+$ ]]; then
         warn "Malformed severity value for level '$LOG_LEVEL'."
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+            debug_end "$debug" 
         return 1
     fi
 
     # Skip logging if the message's severity is below the configured threshold
     if (( severity < config_severity )); then
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+            debug_end "$debug" 
         return 0
     fi
 
     # Call print_log_entry to handle actual logging (to file and console)
     print_log_entry "$timestamp" "$custom_level" "$color" "$lineno" "$message" "$debug"
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -2915,7 +2971,7 @@ log_message_with_severity() {
     # shellcheck disable=2076
     if [[ ! "logD logI logW logE logC logX" =~ "${FUNCNAME[1]}" ]]; then
         warn "Invalid calling function: ${FUNCNAME[1]}"
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+            debug_end "$debug" 
         exit 1
     fi
 
@@ -2929,7 +2985,7 @@ log_message_with_severity() {
         message="$2"
     else
         warn "Message is required."
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+            debug_end "$debug" 
         exit 1
     fi
 
@@ -2949,7 +3005,7 @@ log_message_with_severity() {
         logX "$extended_message" "$debug"
     fi
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -3058,7 +3114,7 @@ init_log() {
 
     # Attempt to create the log file in the fallback location
     if ! touch "$LOG_FILE" &>/dev/null; then
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+            debug_end "$debug" 
         die 1 "Unable to create log file even in fallback location: $LOG_FILE"
     fi
 
@@ -3068,7 +3124,7 @@ init_log() {
     readonly LOG_FILE
     export LOG_FILE
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -3088,31 +3144,7 @@ default_color() {
 
     tput "$@" 2>/dev/null || printf "\n"  # Fallback to an empty string on error
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
-    return 0
-}
-
-# -----------------------------------------------------------------------------
-# @brief Execute and combine complex terminal control sequences.
-#
-# @details This function executes `tput` commands and other shell commands
-#          to create complex terminal control sequences. It supports commands
-#          like moving the cursor, clearing lines, and resetting attributes.
-#
-# @param $@ Commands and arguments to evaluate (supports multiple commands).
-#
-# @return The resulting terminal control sequence or an empty string if unsupported.
-# -----------------------------------------------------------------------------
-# shellcheck disable=2329
-generate_terminal_sequence() {
-    local debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
-
-    local result
-    # Execute the command and capture its output, suppressing errors.
-    result=$("$@" 2>/dev/null || printf "\n")
-    printf "%s" "$result"
-
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -3184,7 +3216,7 @@ init_colors() {
     readonly FGBLK FGRED FGGRN FGYLW FGBLU FGMAG FGCYN FGWHT FGRST FGGLD
     readonly BGBLK BGRED BGGRN BGYLW BGBLU BGMAG BGCYN BGWHT BGRST
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -3211,7 +3243,7 @@ generate_separator() {
     # Validate separator type
     if [[ "$type" != "heavy" && "$type" != "light" ]]; then
         warn "Invalid separator type: '$1'. Must be 'heavy' or 'light'."
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+            debug_end "$debug" 
         return 1
     fi
 
@@ -3228,12 +3260,12 @@ generate_separator() {
         *)
             # Handle invalid separator type
             warn "Invalid separator type: $type"
-                    debug_end "$debug" # Next line must be a return/print/exit out of function
+                    debug_end "$debug" 
             return 1
             ;;
     esac
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -3264,7 +3296,7 @@ validate_log_level() {
         LOG_LEVEL="INFO"  # Default to "INFO"
     fi
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -3320,7 +3352,7 @@ setup_log() {
     # Validate the log level and log properties
     validate_log_level "$debug"
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -3346,7 +3378,7 @@ toggle_console_log() {
     # Validate $state
     if [[ "$state" != "on" && "$state" != "off" ]]; then
         warn "Invalid state: '$state'. Must be 'on' or 'off'."
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+            debug_end "$debug" 
         return 1
     fi
 
@@ -3362,12 +3394,12 @@ toggle_console_log() {
             ;;
         *)
             warn "Invalid argument for toggle_console_log: $state"
-                    debug_end "$debug" # Next line must be a return/print/exit out of function
+                    debug_end "$debug" 
             return 1
             ;;
     esac
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -3421,7 +3453,7 @@ get_repo_org() {
     # Output the determined or fallback organization
     printf "%s\n" "$repo_org"
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -3466,7 +3498,7 @@ get_repo_name() {
     # Output the determined or fallback repository name
     printf "%s\n" "$repo_name"
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -3494,7 +3526,7 @@ repo_to_title_case() {
     # Validate input
     if [[ -z "${repo_name:-}" ]]; then
         warn "Repository name cannot be empty."
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+            debug_end "$debug" 
         return 1
     fi
     debug_print "Received repository name: $repo_name" "$debug"
@@ -3512,7 +3544,7 @@ repo_to_title_case() {
         retval=1
     fi
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return "$retval"
 }
 
@@ -3565,7 +3597,7 @@ get_repo_branch() {
     # Output the determined or fallback branch name
     printf "%s\n" "$branch"
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -3608,7 +3640,7 @@ get_last_tag() {
     # Output the tag
     printf "%s\n" "$tag"
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -3633,7 +3665,7 @@ is_sem_ver() {
     # Validate input
     if [[ -z "${tag:-}" ]]; then
         warn "Tag cannot be empty."
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+            debug_end "$debug" 
         return 1
     fi
 
@@ -3648,7 +3680,7 @@ is_sem_ver() {
         printf "false\n"
     fi
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -3671,7 +3703,7 @@ get_num_commits() {
     if [[ -z "$tag" || "$tag" == "0.0.1" ]]; then
         debug_print "No valid tag provided. Assuming 0 commits." "$debug"
         printf "0\n"
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+            debug_end "$debug" 
         return 1
     fi
 
@@ -3680,7 +3712,7 @@ get_num_commits() {
 
     printf "%s\n" "$commit_count"
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -3709,7 +3741,7 @@ get_short_hash() {
 
     printf "%s\n" "$short_hash"
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -3745,7 +3777,7 @@ get_dirty() {
         debug_print "No changes detected." "$debug"
     fi
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -3804,7 +3836,7 @@ get_sem_ver() {
 
     printf "%s\n" "$version_string"
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -3847,35 +3879,35 @@ get_proj_params() {
         # Retrieve repository details
         REPO_ORG=$(get_repo_org "${debug}")
         if [[ $? -ne 0 ]]; then
-                    debug_end "$debug" # Next line must be a return/print/exit out of function
+                    debug_end "$debug" 
             die 1 "Failed to retrieve repository organization."
         fi
         debug_print "REPO_ORG set to: $REPO_ORG" "$debug"
 
         REPO_NAME=$(get_repo_name "${debug}")
         if [[ $? -ne 0 ]]; then
-                    debug_end "$debug" # Next line must be a return/print/exit out of function
+                    debug_end "$debug" 
             die 1 "Failed to retrieve repository name."
         fi
         debug_print "REPO_NAME set to: $REPO_NAME" "$debug"
 
         REPO_BRANCH=$(get_repo_branch "${debug}")
         if [[ $? -ne 0 ]]; then
-                    debug_end "$debug" # Next line must be a return/print/exit out of function
+                    debug_end "$debug" 
             die 1 "Failed to retrieve respository branch."
         fi
         debug_print "REPO_BRANCH set to: $REPO_BRANCH" "$debug"
 
         GIT_TAG=$(get_last_tag "${debug}")
         if [[ $? -ne 0 ]]; then
-                    debug_end "$debug" # Next line must be a return/print/exit out of function
+                    debug_end "$debug" 
             die 1 "Failed to retrieve last tag."
         fi
         debug_print "GIT_TAG set to: $GIT_TAG" "$debug"
 
         SEM_VER=$(get_sem_ver "${debug}")
         if [[ $? -ne 0 ]]; then
-                    debug_end "$debug" # Next line must be a return/print/exit out of function
+                    debug_end "$debug" 
             die 1 "Failed to retrieve semantic version."
         fi
         debug_print "SEM_VER set to: $SEM_VER" "$debug"
@@ -3883,7 +3915,7 @@ get_proj_params() {
         # Get the root directory of the repository
         LOCAL_REPO_DIR=$(git rev-parse --show-toplevel 2>/dev/null)
         if [[ -z "${LOCAL_REPO_DIR:-}" ]]; then
-                    debug_end "$debug" # Next line must be a return/print/exit out of function`
+                    debug_end "$debug" `
             die 1 "Not inside a valid Git repository. Ensure the repository is properly initialized."
         fi
         debug_print "LOCAL_REPO_DIR set to: $LOCAL_REPO_DIR" "$debug"
@@ -3891,7 +3923,7 @@ get_proj_params() {
         # Set local script path based on repository structure
         LOCAL_WWW_DIR="$LOCAL_REPO_DIR/data"
         if [[ -d "${LOCAL_WWW_DIR:-}" ]]; then
-                    debug_end "$debug" # Next line must be a return/print/exit out of function`
+                    debug_end "$debug" `
             die 1 "HTML source directory does not exist."
         fi
         debug_print "LOCAL_WWW_DIR set to: $LOCAL_WWW_DIR" "$debug"
@@ -3899,7 +3931,7 @@ get_proj_params() {
         # Set local script path based on repository structure
         LOCAL_SCRIPTS_DIR="$LOCAL_REPO_DIR/scripts"
         if [[ -d "${LOCAL_WWW_DIR:-}" ]]; then
-                    debug_end "$debug" # Next line must be a return/print/exit out of function
+                    debug_end "$debug" 
             die 1 "Scripts source directory does not exist."
         fi
         debug_print "LOCAL_SCRIPTS_DIR set to: $LOCAL_SCRIPTS_DIR" "$debug"
@@ -3907,7 +3939,7 @@ get_proj_params() {
         # Configure remote access URLs
         debug_print "Configuring remote mode." "$debug"
         if [[ -z "${REPO_ORG:-}" || -z "${REPO_NAME:-}" ]]; then
-                    debug_end "$debug" # Next line must be a return/print/exit out of function
+                    debug_end "$debug" 
             die 1 "Remote mode requires REPO_ORG and REPO_NAME to be set."
         fi
 
@@ -3924,7 +3956,7 @@ get_proj_params() {
     export THIS_SCRIPT REPO_ORG REPO_NAME REPO_BRANCH GIT_TAG LOCAL_REPO_DIR
     export LOCAL_WWW_DIR LOCAL_SCRIPTS_DIR GIT_RAW GIT_API
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -3972,7 +4004,7 @@ download_file() {
 
     local dest_file="$dest_dir/$file_name"
     mv "$dest_file" "${dest_file//\'/}"
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return
 }
 
@@ -4004,7 +4036,7 @@ git_clone() {
     }
 
     logI "Repository cloned successfully to $dest_root"
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return
 }
 
@@ -4035,7 +4067,7 @@ fetch_tree() {
     fi
 
     curl -s "$GIT_API/git/trees/$branch_sha?recursive=1"
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return
 }
 
@@ -4089,7 +4121,7 @@ download_files_in_directories() {
         logI "Files from $dir downloaded to: $dest_dir"
     done
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     logI "Files saved in: $dest_root"
 }
 
@@ -4120,7 +4152,7 @@ start_script() {
     if [[ "${TERSE:-false}" == "true" ]]; then
         logI "$(repo_to_title_case "${REPO_NAME:-Unknown}") installation beginning."
         debug_print "Skipping interactive message due to terse mode." "$debug"
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+            debug_end "$debug" 
         return 0
     fi
 
@@ -4149,7 +4181,7 @@ start_script() {
             ;;
     esac
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -4180,17 +4212,17 @@ set_time() {
     tz="$(date +%Z)"
 
     # Log and return if the timezone is not GMT or BST
-    if [ "$tz" != "GMT" ] && [ "$tz" != "BST" ]; then
+    if [[ "$tz" != "GMT" && "$tz" != "BST" && "$tz" != "UTC" ]]; then
         need_set=true
-        debug_print "Timezone '$tz' is neither GMT nor BST" "$debug"
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+        debug_print "Timezone '$tz' is neither GMT, BST, nor UTC" "$debug"
+        debug_end "$debug"
         return 0
-    fi
+fi
 
     # Check if the script is in terse mode
     if [[ "$TERSE" == "true" && "$need_set" == "true" ]]; then
         logW "Timezone detected as $tz, which may need to be updated."
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+            debug_end "$debug" 
         return 1
     else
         logI "Timezone detected as $tz."
@@ -4217,7 +4249,7 @@ set_time() {
         esac
     done
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -4254,18 +4286,18 @@ exec_new_shell() {
     # Simulate command execution if DRY_RUN is enabled
     if [[ -n "$DRY_RUN" ]]; then
         printf "[✔] Simulating: '%s'.\n" "$exec_process"
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+            debug_end "$debug" 
         exit_script 0 "$debug"
     fi
 
     # Validate the command
     if [[ "$exec_process" == "true" || "$exec_process" == "" ]]; then
         printf "[✔] Running: '%s'.\n" "$exec_process"
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+            debug_end "$debug" 
         exec true
     elif ! command -v "${exec_process%% *}" >/dev/null 2>&1; then
         warn "'$exec_process' is not a valid command or executable."
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+            debug_end "$debug" 
         die 1 "Invalid command: '$exec_process'"
     else
         # Execute the actual command
@@ -4274,7 +4306,7 @@ exec_new_shell() {
         exec $exec_process || die 1 "Command '${exec_process}' failed"
     fi
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -4333,7 +4365,7 @@ exec_command() {
         # Move up & clear ephemeral line
         printf "%b%b" "$MOVE_UP" "$CLEAR_LINE"
         printf "%b[✔]%b %s %s.\n" "${FGGRN}" "${RESET}" "$complete_pre" "$exec_name"
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+            debug_end "$debug" 
         return 0
     fi
 
@@ -4357,7 +4389,7 @@ exec_command() {
         fi
     fi
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return $status
 }
 
@@ -4383,7 +4415,7 @@ handle_apt_packages() {
     if [[ ${#APT_PACKAGES[@]} -eq 0 ]]; then
         logI "No packages specified in APT_PACKAGES. Skipping package handling."
         debug_print "APT_PACKAGES is empty, skipping execution." "$debug"
-            debug_end "$debug" # Next line must be a return/print/exit out of function
+            debug_end "$debug" 
         return 0
     fi
 
@@ -4425,7 +4457,7 @@ handle_apt_packages() {
         debug_print "APT package handling completed successfully." "$debug"
     fi
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return $error_count
 }
 
@@ -4458,7 +4490,7 @@ finish_script() {
         printf "Installation complete: %s.\n" "$(repo_to_title_case "$REPO_NAME")"
     fi
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -4505,7 +4537,7 @@ exit_script() {
     # Log the provided or default message
     printf "[EXIT ] '%s' from %s:%d status (%d).\n" "$message" "$caller_func" "$lineno" "$exit_status"
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     exit "$exit_status"  # Exit with the provided status
 }
 
@@ -5356,7 +5388,7 @@ _main() {
     handle_apt_packages "$debug"       # Perform APT maintenance and install/update packages
     finish_script "$debug"             # Finish the script with final instructions
 
-    debug_end "$debug" # Next line must be a return/print/exit out of function
+    debug_end "$debug" 
     return 0
 }
 
@@ -5382,5 +5414,5 @@ trap egress EXIT
 
 debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 main "$@" "$debug"
-debug_end "$debug" # Next line must be a return/print/exit out of function
+debug_end "$debug"
 exit $?
