@@ -467,7 +467,7 @@ readonly SUPPORTED_BITNESS="${SUPPORTED_BITNESS:-32}"  # Supported bitness ("32"
 # Otherwise, define the default supported models
 declare -A SUPPORTED_MODELS
 
-if [[ -n "$SUPPORTED_MODELS" ]]; then
+if [[ -n "${SUPPORTED_MODELS-}" ]]; then
     # If SUPPORTED_MODELS is set in the environment, use it
     eval "declare -A SUPPORTED_MODELS=${SUPPORTED_MODELS}"
 else
@@ -2330,7 +2330,7 @@ check_arch() {
     local detected_model is_supported key full_name model chip this_model this_chip
 
     # Check if SUPPORTED_MODELS is set to "*" to allow all models
-    if [[ "${SUPPORTED_MODELS}" == "*" ]]; then
+    if [[ "${SUPPORTED_MODELS}" == "all" ]]; then
         is_supported=true
         debug_print "All models are allowed, SUPPORTED_MODELS is set to '*'" "$debug"
         debug_end "$debug"
