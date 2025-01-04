@@ -49,6 +49,12 @@ This Bash script serves as a comprehensive template for various Bash scripting p
 * Extensible user menu
 * Extensible command line options with adaptable usage display
 
+As it sits, this script does nothing useful besides installing apt packages.  Running with some environmental overrides to change configured behavior, this is what a successful execution looks like:
+
+![Image of a successful script execution](images/running-the-template.png)
+
+It's up to you to make this useful for your needs.
+
 ## Usage and Customization
 
 To use this template:
@@ -62,11 +68,11 @@ You can modify the script's functionality and function by using the global decla
 
 Most of these will use environment values or allow default if the environment does not have this setting: `DRY_RUN=" ${DRY_RUN:-false}" ` means if you set DRY_RUN in the environment (or use `DRY_RUN=true scriptname.sh` to execute), it will default to that value. If the environment does not have this variable set, it will take whatever is to the right of the hyphen (`-`) as its default value.
 
-Details may be found in [Declarations](Declarations.md).
+Details about the global declarations and how you may use them to modify the script's behavior may be found in [Declarations](Declarations.md).
 
 ### Functions
 
-Details may be found in [Functions](Functions.md).
+An accounting of the functions in the script and what each does may be found in [Functions](Functions.md).
 
 ## Documentation Style
 
@@ -110,12 +116,12 @@ echo "* Whitespace lines: $whitespace_lines ($whitespace_percentage%)"
 
 The results:
 
-* Total lines: 5386
-* Real lines: 2318 (43.0%)
-* Comment lines: 2465 (45.8%)
-* Whitespace lines: 603 (11.2%)
+* Total lines: 5418
+* Real lines: 2330 (43.0%)
+* Comment lines: 2485 (45.9%)
+* Whitespace lines: 603 (11.1%)
 
-Here's an example of the comments I've tried to provide everywhere:
+We've established that I may not love, but I embrace comments and documentation. Here's an example of the comments I've tried to provide everywhere:
 
 ``` bash
 # -----------------------------------------------------------------------------
