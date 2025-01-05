@@ -1178,18 +1178,7 @@ warn() {
     # Recalculate terminal columns
     COLUMNS=$(tput cols); local width=${COLUMNS:-80}  # Max console width
 
-    # -------------------------------------------------------------------------
-    # @brief Provides a fallback for `tput` commands when errors occur.
-    # @details Returns an empty string if `tput` fails, ensuring no errors
-    #          propagate during color or formatting setup.
-    #
-    # @param $@ Command-line arguments passed directly to `tput`.
-    #
-    # @return Output of `tput` if successful, or an empty string if it fails.
-    #
-    # @example
-    #     local bold=$(safe_tput bold)
-    # -------------------------------------------------------------------------
+    # Fallback for `tput` commands
     safe_tput() { tput "$@" 2>/dev/null || printf ""; }
 
     # General text attributes
@@ -1197,25 +1186,12 @@ warn() {
     local bold=$(safe_tput bold)
 
     # Foreground colors
-    local fgylw=$(safe_tput setaf 3)  # Yellow text
-    local fgblu=$(safe_tput setaf 4)  # Blue text
-    local fgcyn=$(safe_tput setaf 6)  # Cyan text
     local fggld=$(safe_tput setaf 220)  # Gold text
-    [[ -z "$fggld" ]] && fggld="$fgylw"  # Fallback to yellow
+    local fgcyn=$(safe_tput setaf 6)   # Cyan text
+    local fgblu=$(safe_tput setaf 4)   # Blue text
+    [[ -z "$fggld" ]] && fggld=$(safe_tput setaf 3)  # Fallback to yellow
 
-    # -------------------------------------------------------------------------
-    # @brief Creates a formatted prefix for logging messages.
-    # @details Combines color, labels, and positional information into a
-    #          prefix.
-    #
-    # @param $1 [required] Color for the prefix.
-    # @param $2 [required] Label for the message (e.g., "[WARN ]").
-    #
-    # @return [string] Formatted prefix as a string.
-    #
-    # @example
-    # local warn_prefix=$(format_prefix "$fggld" "[WARN ]")
-    # -------------------------------------------------------------------------
+    # Format prefix
     format_prefix() {
         local color=$1
         local label=$2
@@ -1229,29 +1205,8 @@ warn() {
     local extd_prefix=$(format_prefix "$fgcyn" "[EXTND]")
     local dets_prefix=$(format_prefix "$fgblu" "[DETLS]")
 
-    # Strip ANSI escape sequences for length calculation
-    local plain_warn_prefix prefix_length adjusted_width
-    # Strip ANSI escape sequences and additional control sequences
-    plain_warn_prefix=$(printf "%s" "$warn_prefix" | sed -E 's/(\x1b\[[0-9;]*[a-zA-Z]|\x1b\([a-zA-Z])//g')
-    # Trim any leading/trailing whitespace
-    plain_warn_prefix=$(printf "%s" "$plain_crit_prefix" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-    # Recalculate length
-    prefix_length=$(( ${#plain_warn_prefix} + 1 ))
-    # Set adjusted (remainder) width for display
-    adjusted_width=$((width - prefix_length))
-
-    # Parse error code if the first parameter is numeric
-    if [[ -n "${1:-}" && "$1" =~ ^[0-9]+$ ]]; then
-        error_code=$((10#$1))  # Convert to numeric
-        shift
-    fi
-
     # Process primary message
-    message=$(printf "%s" "${1:-Critical error}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-    message=$(add_period "$message")
-    if [[ -n "$error_code" ]]; then
-        message=$(printf "%s Code: (%d)" "$message" "$error_code")
-    fi
+    message=$(printf "%s" "${1:-A warning was raised on this line}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
     shift
 
     # Process additional details
@@ -1260,19 +1215,20 @@ warn() {
     for arg in "$@"; do
         details+=" $arg"
     done
-    if [[ -n $details ]]; then
-        details=$(add_period "$details")
+
+    # Fallback mechanism for `wrap_messages`
+    local result primary overflow secondary
+    if command -v wrap_messages >/dev/null 2>&1; then
+        result=$(wrap_messages "$width" "$message" "$details")
+        primary="${result%%${delimiter}*}"
+        result="${result#*${delimiter}}"
+        overflow="${result%%${delimiter}*}"
+        secondary="${result#*${delimiter}}"
+    else
+        primary="$message"
+        overflow=""
+        secondary="$details"
     fi
-
-    # Call wrap_and_combine_messages
-    local result
-    result=$(wrap_messages "$adjusted_width" "$message" "$details")
-
-    # Parse wrapped parts
-    local primary="${result%%${delimiter}*}"
-    result="${result#*${delimiter}}"
-    local overflow="${result%%${delimiter}*}"
-    local secondary="${result#*${delimiter}}"
 
     # Print the primary message
     printf "%s%s\n" "$warn_prefix" "$primary" >&2
@@ -1290,91 +1246,87 @@ warn() {
             printf "%s%s\n" "$dets_prefix" "$line" >&2
         done <<< "$secondary"
     fi
-
-    # Include stack trace for warnings if enabled
-    if [[ "${WARN_STACK_TRACE:-false}" == "true" ]]; then
-        stack_trace "WARNING" "$message"
-    fi
 }
 
 # -----------------------------------------------------------------------------
-# @brief Terminates the script with a critical error message and details.
-# @details This function prints a critical error message along with optional
-#          details, formats them with color and indentation, and includes a
-#          stack trace for debugging. It then exits with the specified error
-#          code.
+# @brief Terminates the script with a critical error message.
+# @details This function is used to log a critical error message with optional
+#          details and exit the script with the specified error code. It
+#          supports formatting the output with ANSI color codes, dynamic
+#          column widths, and optional multi-line message wrapping.
 #
-# @param $1 [optional] Numeric error code. Defaults to 1 if not provided.
-# @param $2 [optional] Primary error message. Defaults to "Critical error"
-#                      if not provided.
-# @param $@ [optional] Additional details or context for the error.
+#          If the optional `wrap_messages` function is available, it will be
+#          used to wrap and combine messages. Otherwise, the function falls
+#          back to printing the primary message and details as-is.
 #
-# @global THIS_SCRIPT The script's name, used for logging.
-# @global COLUMNS Console width, used to calculate message formatting.
+# @param $1 [optional] Numeric error code. Defaults to 1.
+# @param $2 [optional] Primary error message. Defaults to "Critical error".
+# @param $@ [optional] Additional details to include in the error message.
 #
-# @throws Exits the script with the provided error code or the default
-#         value (1).
+# @global FALLBACK_SCRIPT_NAME The script name to use as a fallback.
+# @global FUNCNAME             Bash array containing the call stack.
+# @global BASH_LINENO          Bash array containing line numbers of the stack.
+# @global WRAP_DELIMITER       Delimiter used when combining wrapped messages.
+# @global COLUMNS              The terminal's column width, used to adjust
+#                              message formatting.
 #
-# @return None. Outputs formatted error messages and terminates the script.
+# @return None. This function does not return.
+# @exit Exits the script with the specified error code.
 #
 # @example
-# die 127 "File not found" "The specified file is missing or inaccessible."
+# die 127 "File not found" "Please check the file path and try again."
+# die "Critical configuration error"
 # -----------------------------------------------------------------------------
 die() {
     # Initialize variables
-    local script="${FALLBACK_SCRIPT_NAME:-unknown}" # This script's name
-    local func_name="${FUNCNAME[1]:-main}" # Calling function
-    local caller_line=${BASH_LINENO[0]:-0} # Calling line
-    local error_code=""                    # Error code, default blank
-    local message=""                       # Primary message
-    local details=""                       # Additional details
-    local delimiter="␞"                    # Delimiter for wrapped parts
+    local script="${FALLBACK_SCRIPT_NAME:-unknown}"  # This script's name
+    local func_name="${FUNCNAME[1]:-main}"          # Calling function
+    local caller_line=${BASH_LINENO[0]:-0}          # Calling line
+
+    # Get valid error code
+    if [[ -n "${1:-}" && "$1" =~ ^[0-9]+$ ]]; then
+        error_code=$((10#$1))  # Convert to numeric
+        shift
+    else
+        error_code=1  # Default to 1 if not numeric
+    fi
+
+    # Configurable delimiter
+    local delimiter="${WRAP_DELIMITER:-␞}"
+
+    # Process the primary message
+    local message
+    message=$(sed -E 's/^[[:space:]]*//;s/[[:space:]]*$//' <<< "${1:-Critical error}")
+
+    # Only shift if there are remaining arguments
+    [[ $# -gt 0 ]] && shift
+
+    # Process details
+    local details
+    details=$(sed -E 's/^[[:space:]]*//;s/[[:space:]]*$//' <<< "$*")
+
     # Recalculate terminal columns
-    COLUMNS=$(tput cols); local width=${COLUMNS:-80}  # Max console width
+    local width
+    COLUMNS=$(tput cols 2>/dev/null || echo 80) # Fallback to 80 on failure
+    width=${COLUMNS:-80}                        # Max console width
 
-    # -------------------------------------------------------------------------
-    # @brief Provides a fallback for `tput` commands when errors occur.
-    # @details Returns an empty string if `tput` fails, ensuring no errors
-    #          propagate during color or formatting setup.
-    #
-    # @param $@ Command-line arguments passed directly to `tput`.
-    #
-    # @return Output of `tput` if successful, or an empty string if it fails.
-    #
-    # @example
-    # local bold=$(safe_tput bold)
-    # -------------------------------------------------------------------------
-    safe_tput() {
-        tput "$@" 2>/dev/null || printf ""
-    }
-
-    # General text attributes
-    local reset=$(safe_tput sgr0)
-    local bold=$(safe_tput bold)
-
+    # Escape sequences as safe(r) alternatives to global tput values
+    # General attributes
+    local reset="\033[0m"
+    local bold="\033[1m"
     # Foreground colors
-    local fgred=$(safe_tput setaf 1)  # Red text
-    local fgblu=$(safe_tput setaf 4)  # Blue text
-    local fgcyn=$(safe_tput setaf 6)  # Cyan text
+    local fgred="\033[31m" # Red text
+    local fgcyn="\033[36m" # Cyan text
+    local fgblu="\033[34m" # Blue text
 
-    # -------------------------------------------------------------------------
-    # @brief Formats a log message prefix with a specified label and color.
-    # @details Constructs a formatted prefix string that includes the label,
-    #          the script name, the calling function name, and the line number.
-    #
-    # @param $1 [required] Color for the label (e.g., `$fgred` for red text).
-    # @param $2 [required] Label for the prefix (e.g., "[CRIT ]").
-    #
-    # @return A formatted prefix string with color and details.
-    #
-    # @example
-    # local crit_prefix=$(format_prefix "$fgred" "[CRIT ]")
-    # -------------------------------------------------------------------------
+    # Format prefix
     format_prefix() {
-        local color=$1
-        local label=$2
-        printf "%b%s%b %b[%s:%s:%s]%b " \
-            "${bold}${color}" \
+        local color=${1:-"\033[0m"}
+        local label="${2:-'[CRIT ] [unknown:main:0]'}"
+        # Create prefix
+        printf "%b%b%s%b %b[%s:%s:%s]%b " \
+            "${bold}" \
+            "${color}" \
             "${label}" \
             "${reset}" \
             "${bold}" \
@@ -1385,56 +1337,29 @@ die() {
     }
 
     # Generate prefixes
-    local crit_prefix=$(format_prefix "$fgred" "[CRIT ]")
-    local extd_prefix=$(format_prefix "$fgcyn" "[EXTND]")
-    local dets_prefix=$(format_prefix "$fgblu" "[DETLS]")
+    local crit_prefix extd_prefix dets_prefix
+    crit_prefix=$(format_prefix "$fgred" "[CRIT ]")
+    extd_prefix=$(format_prefix "$fgcyn" "[EXTND]")
+    dets_prefix=$(format_prefix "$fgblu" "[DETLS]")
 
     # Strip ANSI escape sequences for length calculation
-    local plain_crit_prefix prefix_length adjusted_width
-    # Strip ANSI escape sequences and additional control sequences
-    plain_crit_prefix=$(printf "%s" "$crit_prefix" | sed -E 's/(\x1b\[[0-9;]*[a-zA-Z]|\x1b\([a-zA-Z])//g')
-    # Trim any leading/trailing whitespace
-    plain_crit_prefix=$(printf "%s" "$plain_crit_prefix" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-    # Recalculate length
-    prefix_length=$(( ${#plain_crit_prefix} + 1 ))
-    # Set adjusted (remainder) width for display
-    adjusted_width=$((width - prefix_length))
+    local plain_crit_prefix adjusted_width
+    plain_crit_prefix=$(printf "%s" "$crit_prefix" | sed -E 's/(\x1b\[[0-9;]*[a-zA-Z]|\x1b\([a-zA-Z])//g; s/^[[:space:]]*//; s/[[:space:]]*$//')
+    adjusted_width=$((width - ${#plain_crit_prefix} - 1))
 
-    # Parse error code if the first parameter is numeric, default to 1
-    if [[ -n "${1:-}" && "$1" =~ ^[0-9]+$ ]]; then
-        error_code=$((10#$1))  # Convert to numeric
-        shift
+    # Fallback mechanism for `wrap_messages` since it is external
+    local result primary overflow secondary
+    if command -v wrap_messages >/dev/null 2>&1; then
+        result=$(wrap_messages "$adjusted_width" "$message" "$details" || true)
+        primary="${result%%${delimiter}*}"
+        result="${result#*${delimiter}}"
+        overflow="${result%%${delimiter}*}"
+        secondary="${result#*${delimiter}}"
     else
-        error_code=1
+        primary="$message"
+        overflow=""
+        secondary="$details"
     fi
-
-    # Process primary message
-    message=$(printf "%s" "${1:-Critical error}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-    message=$(add_period "$message")
-    if [[ -n "$error_code" ]]; then
-        message=$(printf "%s Code: (%d)" "$message" "$error_code")
-    fi
-    shift
-
-    # Process additional details
-    details="${1:-}"
-    shift
-    for arg in "$@"; do
-        details+=" $arg"
-    done
-    if [[ -n $details ]]; then
-        details=$(add_period "$details")
-    fi
-
-    # Call wrap_and_combine_messages
-    local result
-    result=$(wrap_messages "$adjusted_width" "$message" "$details")
-
-    # Parse wrapped parts
-    local primary="${result%%${delimiter}*}"
-    result="${result#*${delimiter}}"
-    local overflow="${result%%${delimiter}*}"
-    local secondary="${result#*${delimiter}}"
 
     # Print the primary message
     printf "%s%s\n" "$crit_prefix" "$primary" >&2
@@ -1453,8 +1378,7 @@ die() {
         done <<< "$secondary"
     fi
 
-    # Include stack trace for warnings if enabled
-    stack_trace "CRITICAL" "$message"
+    # Exit with the specified error code
     exit "$error_code"
 }
 
@@ -2257,14 +2181,14 @@ check_bitness() {
         "32")
             debug_print "Script supports only 32-bit systems." "$debug"
             if [[ "$bitness" -ne 32 ]]; then
-                            debug_end "$debug"
+                debug_end "$debug"
                 die 1 "Only 32-bit systems are supported. Detected $bitness-bit system."
             fi
             ;;
         "64")
             debug_print "Script supports only 64-bit systems." "$debug"
             if [[ "$bitness" -ne 64 ]]; then
-                            debug_end "$debug"
+                debug_end "$debug"
                 die 1 "Only 64-bit systems are supported. Detected $bitness-bit system."
             fi
             ;;
@@ -2273,7 +2197,7 @@ check_bitness() {
             ;;
         *)
             debug_print "Invalid SUPPORTED_BITNESS configuration: '$SUPPORTED_BITNESS'." "$debug"
-                    debug_end "$debug"
+            debug_end "$debug"
             die 1 "Configuration error: Invalid value for SUPPORTED_BITNESS ('$SUPPORTED_BITNESS')."
             ;;
     esac
@@ -2736,75 +2660,59 @@ pad_with_spaces() {
 # echo "$wrapped"
 # -----------------------------------------------------------------------------
 wrap_messages() {
-    local line_width=$1 # Maximum width of each line
-    local primary=$2    # Primary message string
-    local secondary=$3  # Secondary message string
-    local delimiter="␞" # ASCII delimiter (code 30) for separating messages
+    local line_width=$1
+    local primary=$2
+    local secondary=$3
+    local delimiter="␞"
 
-    # -------------------------------------------------------------------------
-    # @brief Wraps a message into lines with ellipses for overflow or
-    #        continuation.
-    # @details Splits the message into lines, appending an ellipsis for
-    #          overflowed lines and prepending it for continuation lines.
-    #
-    # @param $1 [required] The message string to wrap.
-    # @param $2 [required] Maximum width of each line (numeric).
-    #
-    # @global None.
-    #
-    # @throws None.
-    #
-    # @return A single string with wrapped lines, ellipses added as necessary.
-    #
-    # @example
-    # wrapped=$(wrap_message "This is a long message" 50)
-    # echo "$wrapped"
-    # -------------------------------------------------------------------------
+    # Validate input
+    if [[ -z "$line_width" || ! "$line_width" =~ ^[0-9]+$ || "$line_width" -le 1 ]]; then
+        printf "Error: Invalid line width '%s' in %s(). Must be a positive integer.\n" \
+            "$line_width" "${FUNCNAME[0]}" >&2
+        return 1
+    fi
+
+    # Inner function to wrap a single message
     wrap_message() {
-        local message=$1        # Input message to wrap
-        local width=$2          # Maximum width of each line
-        local result=()         # Array to store wrapped lines
-        local adjusted_width=$((width - 1))  # Adjust width for ellipses
-        echo $adjusted_width
+        local message=$1
+        local width=$2
+        local result=()
+        # Address faulty width with a min of 10
+        local adjusted_width=$((width > 10 ? width - 1 : 10))
 
-        # Process message line-by-line
         while IFS= read -r line; do
             result+=("$line")
         done <<< "$(printf "%s\n" "$message" | fold -s -w "$adjusted_width")"
 
-        # Add ellipses to wrapped lines
         for ((i = 0; i < ${#result[@]}; i++)); do
+            result[i]=$(printf "%s" "${result[i]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
             if ((i == 0)); then
-                # Append ellipsis to the first line
-                result[i]="${result[i]% }…"
+                result[i]="${result[i]}…"
             elif ((i == ${#result[@]} - 1)); then
-                # Prepend ellipsis to the last line
                 result[i]="…${result[i]}"
             else
-                # Add ellipses to both ends of middle lines
-                result[i]="…${result[i]% }…"
+                result[i]="…${result[i]}…"
             fi
         done
 
-        # Return the wrapped lines as a single string
         printf "%s\n" "${result[@]}"
     }
 
-    # Process the primary message
-    local overflow=""          # Stores overflow lines from the primary message
+    # Process primary message
+    local overflow=""
     if [[ ${#primary} -gt $line_width ]]; then
-        local wrapped_primary  # Temporarily stores the wrapped primary message
+        local wrapped_primary
         wrapped_primary=$(wrap_message "$primary" "$line_width")
         overflow=$(printf "%s\n" "$wrapped_primary" | tail -n +2)
         primary=$(printf "%s\n" "$wrapped_primary" | head -n 1)
     fi
 
-    # Process the secondary message
+    # Process secondary message
     if [[ ${#secondary} -gt $line_width ]]; then
         secondary=$(wrap_message "$secondary" "$line_width")
     fi
 
-    # Return the combined messages
+    # Combine results
     printf "%s%b%s%b%s" \
         "$primary" \
         "$delimiter" \
