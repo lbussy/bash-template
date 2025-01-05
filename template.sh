@@ -964,6 +964,11 @@ stack_trace() {
     # Determine log level and message
     local level="${1:-INFO}"
     local message=""
+    # Block width and character for header/footer
+    local char="-"
+    # Recalculate terminal columns, max at 80
+    COLUMNS=$(tput cols)
+    local width=$(( COLUMNS > 80 ? 80 : COLUMNS ))
 
     # Check if $1 is a valid level, otherwise treat it as the message
     case "$level" in
@@ -985,18 +990,15 @@ stack_trace() {
     # Trim trailing space
     message="${message% }"
 
-    # Block width and character for header/footer
-    local width=60
-    local char="-"
-
     # Define functions to skip
     local skip_functions=("die" "warn" "stack_trace")
     local encountered_main=0 # Track the first occurrence of main()
 
-    # Get the current function name in title case
+    # Get the current function name stack_trace() in title case for the banner
     local raw_function_name="${FUNCNAME[0]}"
-    local function_name
-    function_name="$(echo "$raw_function_name" | sed -E 's/_/ /g; s/\b(.)/\U\1/g; s/(\b[A-Za-z])([A-Za-z]*)/\1\L\2/g')"
+    local header_name
+    header_name="$(echo "$raw_function_name" | sed -E 's/_/ /g; s/\b(.)/\U\1/g; s/(\b[A-Za-z])([A-Za-z]*)/\1\L\2/g')"
+    header_name="$level $header_name"
 
     # -------------------------------------------------------------------------
     # @brief Determines if a function should be skipped in the stack trace.
@@ -1095,18 +1097,18 @@ stack_trace() {
     esac
 
     # Create header
-    local dash_count=$(( (width - ${#function_name} - 2) / 2 ))
+    local dash_count=$(( (width - ${#header_name} - 2) / 2 ))
     local header_l header_r
     header_l="$(printf '%*s' "$dash_count" | tr ' ' "$char")"
     header_r="$header_l"
-    [[ $(( (width - ${#function_name}) % 2 )) -eq 1 ]] && header_r="${header_r}${char}"
+    [[ $(( (width - ${#header_name}) % 2 )) -eq 1 ]] && header_r="${header_r}${char}"
     local header=$(printf "%b%s%b %b%b%s%b %b%s%b" \
         "${color}" \
         "${header_l}" \
         "${reset}" \
         "${color}" \
         "${bold}" \
-        "${function_name}" \
+        "${header_name}" \
         "${reset}" \
         "${color}" \
         "${header_r}" \
@@ -1121,18 +1123,8 @@ stack_trace() {
 
     # Print the message, if provided
     if [[ -n "$message" ]]; then
-        # Extract the first word and preserve the rest
-        local first="${message%% *}"    # Extract up to the first space
-        local remainder="${message#* }" # Remove the first word and the space
-
-        # Format the message
-        message="$(printf "%b%b%s%b %b%b%s%b" \
-            "${bold}" "${color}" "$first" \
-            "${reset}" "${color}" "$remainder" \
-            "${reset}")"
-
         # Print the formatted message
-        printf "%b\n" "$message"
+        printf "%b%s%b\n" "${color}" "${message}" "${reset}"
     fi
 
     # Calculate indent for proper alignment
@@ -1176,14 +1168,15 @@ stack_trace() {
 # -----------------------------------------------------------------------------
 warn() {
     # Initialize variables
-    local script="${THIS_SCRIPT:-unknown}"       # This script's name
-    local func_name="${FUNCNAME[1]:-main}"       # Calling function
-    local caller_line=${BASH_LINENO[0]:-0}       # Calling line
-    local error_code=""                          # Error code, default blank
-    local message=""                             # Primary message
-    local details=""                             # Additional details
-    local width=${COLUMNS:-80}                   # Max console width
-    local delimiter="␞"                          # Delimiter for wrapped parts
+    local script="${FALLBACK_SCRIPT_NAME:-unknown}" # This script's name
+    local func_name="${FUNCNAME[1]:-main}" # Calling function
+    local caller_line=${BASH_LINENO[0]:-0} # Calling line
+    local error_code=""                    # Error code, default blank
+    local message=""                       # Primary message
+    local details=""                       # Additional details
+    local delimiter="␞"                    # Delimiter for wrapped parts
+    # Recalculate terminal columns
+    COLUMNS=$(tput cols); local width=${COLUMNS:-80}  # Max console width
 
     # -------------------------------------------------------------------------
     # @brief Provides a fallback for `tput` commands when errors occur.
@@ -1237,9 +1230,15 @@ warn() {
     local dets_prefix=$(format_prefix "$fgblu" "[DETLS]")
 
     # Strip ANSI escape sequences for length calculation
-    local plain_warn_prefix=$(echo -e "$warn_prefix" | sed 's/\x1b\[[0-9;]*m//g')
-    local prefix_length=${#plain_warn_prefix}
-    local adjusted_width=$((width - prefix_length))
+    local plain_warn_prefix prefix_length adjusted_width
+    # Strip ANSI escape sequences and additional control sequences
+    plain_warn_prefix=$(printf "%s" "$warn_prefix" | sed -E 's/(\x1b\[[0-9;]*[a-zA-Z]|\x1b\([a-zA-Z])//g')
+    # Trim any leading/trailing whitespace
+    plain_warn_prefix=$(printf "%s" "$plain_crit_prefix" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    # Recalculate length
+    prefix_length=$(( ${#plain_warn_prefix} + 1 ))
+    # Set adjusted (remainder) width for display
+    adjusted_width=$((width - prefix_length))
 
     # Parse error code if the first parameter is numeric
     if [[ -n "${1:-}" && "$1" =~ ^[0-9]+$ ]]; then
@@ -1248,7 +1247,8 @@ warn() {
     fi
 
     # Process primary message
-    message=$(add_period "${1:-A warning was raised on this line}")
+    message=$(printf "%s" "${1:-Critical error}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    message=$(add_period "$message")
     if [[ -n "$error_code" ]]; then
         message=$(printf "%s Code: (%d)" "$message" "$error_code")
     fi
@@ -1322,14 +1322,15 @@ warn() {
 # -----------------------------------------------------------------------------
 die() {
     # Initialize variables
-    local script="${THIS_SCRIPT:-unknown}" # This script's name
+    local script="${FALLBACK_SCRIPT_NAME:-unknown}" # This script's name
     local func_name="${FUNCNAME[1]:-main}" # Calling function
     local caller_line=${BASH_LINENO[0]:-0} # Calling line
     local error_code=""                    # Error code, default blank
     local message=""                       # Primary message
     local details=""                       # Additional details
-    local width=${COLUMNS:-80}             # Max console width
     local delimiter="␞"                    # Delimiter for wrapped parts
+    # Recalculate terminal columns
+    COLUMNS=$(tput cols); local width=${COLUMNS:-80}  # Max console width
 
     # -------------------------------------------------------------------------
     # @brief Provides a fallback for `tput` commands when errors occur.
@@ -1389,9 +1390,15 @@ die() {
     local dets_prefix=$(format_prefix "$fgblu" "[DETLS]")
 
     # Strip ANSI escape sequences for length calculation
-    local plain_crit_prefix=$(echo -e "$crit_prefix" | sed 's/\x1b\[[0-9;]*m//g')
-    local prefix_length=${#plain_crit_prefix}
-    local adjusted_width=$((width - prefix_length))
+    local plain_crit_prefix prefix_length adjusted_width
+    # Strip ANSI escape sequences and additional control sequences
+    plain_crit_prefix=$(printf "%s" "$crit_prefix" | sed -E 's/(\x1b\[[0-9;]*[a-zA-Z]|\x1b\([a-zA-Z])//g')
+    # Trim any leading/trailing whitespace
+    plain_crit_prefix=$(printf "%s" "$plain_crit_prefix" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    # Recalculate length
+    prefix_length=$(( ${#plain_crit_prefix} + 1 ))
+    # Set adjusted (remainder) width for display
+    adjusted_width=$((width - prefix_length))
 
     # Parse error code if the first parameter is numeric, default to 1
     if [[ -n "${1:-}" && "$1" =~ ^[0-9]+$ ]]; then
@@ -1402,7 +1409,8 @@ die() {
     fi
 
     # Process primary message
-    message=$(add_period "${1:-Critical error}")
+    message=$(printf "%s" "${1:-Critical error}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    message=$(add_period "$message")
     if [[ -n "$error_code" ]]; then
         message=$(printf "%s Code: (%d)" "$message" "$error_code")
     fi
@@ -2752,12 +2760,12 @@ wrap_messages() {
     # wrapped=$(wrap_message "This is a long message" 50)
     # echo "$wrapped"
     # -------------------------------------------------------------------------
-    local wrap_message
     wrap_message() {
         local message=$1        # Input message to wrap
         local width=$2          # Maximum width of each line
         local result=()         # Array to store wrapped lines
-        local adjusted_width=$((width - 2))  # Adjust width for ellipses
+        local adjusted_width=$((width - 1))  # Adjust width for ellipses
+        echo $adjusted_width
 
         # Process message line-by-line
         while IFS= read -r line; do
