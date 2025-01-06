@@ -484,36 +484,42 @@ readonly SUPPORTED_BITNESS="${SUPPORTED_BITNESS:-32}" # ("32", "64", or "both")
 # ${SUPPORTED_MODELS[$model]}"
 # done
 # -----------------------------------------------------------------------------
+# Ensure SUPPORTED_MODELS is initialized
 declare -A SUPPORTED_MODELS
-if [[ -n "${SUPPORTED_MODELS-}" ]]; then
-    # If SUPPORTED_MODELS is set in the environment, use it
-    eval "declare -A SUPPORTED_MODELS=${SUPPORTED_MODELS}"
+
+if [[ -z "${SUPPORTED_MODELS-}" ]]; then
+    # If SUPPORTED_MODELS is not set, define the default supported models
+    SUPPORTED_MODELS=(
+        # Unsupported models
+        ["Raspberry Pi 5|5-model-b|bcm2712"]="Not Supported"
+        ["Raspberry Pi 400|400|bcm2711"]="Not Supported"
+        ["Raspberry Pi Compute Module 4|4-compute-module|bcm2711"]="Not Supported"
+        ["Raspberry Pi Compute Module 3|3-compute-module|bcm2837"]="Not Supported"
+        ["Raspberry Pi Compute Module|compute-module|bcm2835"]="Not Supported"
+        # Supported models
+        ["Raspberry Pi 4 Model B|4-model-b|bcm2711"]="Supported"
+        ["Raspberry Pi 3 Model A+|3-model-a-plus|bcm2837"]="Supported"
+        ["Raspberry Pi 3 Model B+|3-model-b-plus|bcm2837"]="Supported"
+        ["Raspberry Pi 3 Model B|3-model-b|bcm2837"]="Supported"
+        ["Raspberry Pi 2 Model B|2-model-b|bcm2836"]="Supported"
+        ["Raspberry Pi Model A+|model-a-plus|bcm2835"]="Supported"
+        ["Raspberry Pi Model B+|model-b-plus|bcm2835"]="Supported"
+        ["Raspberry Pi Model B Rev 2|model-b-rev2|bcm2835"]="Supported"
+        ["Raspberry Pi Model A|model-a|bcm2835"]="Supported"
+        ["Raspberry Pi Model B|model-b|bcm2835"]="Supported"
+        ["Raspberry Pi Zero 2 W|model-zero-2-w|bcm2837"]="Supported"
+        ["Raspberry Pi Zero|model-zero|bcm2835"]="Supported"
+        ["Raspberry Pi Zero W|model-zero-w|bcm2835"]="Supported"
+    )
+elif [[ "$SUPPORTED_MODELS" == "all" ]]; then
+    # If SUPPORTED_MODELS is set to "all", use a special value
+    SUPPORTED_MODELS=(
+        ["all"]="Supported"
+    )
 else
-    # Otherwise, define the default supported models
-SUPPORTED_MODELS=(
-    # Unsupported models
-    ["Raspberry Pi 5|5-model-b|bcm2712"]="Not Supported"
-    ["Raspberry Pi 400|400|bcm2711"]="Not Supported"
-    ["Raspberry Pi Compute Module 4|4-compute-module|bcm2711"]="Not Supported"
-    ["Raspberry Pi Compute Module 3|3-compute-module|bcm2837"]="Not Supported"
-    ["Raspberry Pi Compute Module|compute-module|bcm2835"]="Not Supported"
-    # Supported models
-    ["Raspberry Pi 4 Model B|4-model-b|bcm2711"]="Supported"
-    ["Raspberry Pi 3 Model A+|3-model-a-plus|bcm2837"]="Supported"
-    ["Raspberry Pi 3 Model B+|3-model-b-plus|bcm2837"]="Supported"
-    ["Raspberry Pi 3 Model B|3-model-b|bcm2837"]="Supported"
-    ["Raspberry Pi 2 Model B|2-model-b|bcm2836"]="Supported"
-    ["Raspberry Pi Model A+|model-a-plus|bcm2835"]="Supported"
-    ["Raspberry Pi Model B+|model-b-plus|bcm2835"]="Supported"
-    ["Raspberry Pi Model B Rev 2|model-b-rev2|bcm2835"]="Supported"
-    ["Raspberry Pi Model A|model-a|bcm2835"]="Supported"
-    ["Raspberry Pi Model B|model-b|bcm2835"]="Supported"
-    ["Raspberry Pi Zero 2 W|model-zero-2-w|bcm2837"]="Supported"
-    ["Raspberry Pi Zero|model-zero|bcm2835"]="Supported"
-    ["Raspberry Pi Zero W|model-zero-w|bcm2835"]="Supported"
-)
+    # If SUPPORTED_MODELS is passed as an environment variable, evaluate it
+    eval "SUPPORTED_MODELS=${SUPPORTED_MODELS}"
 fi
-readonly SUPPORTED_MODELS
 
 # -----------------------------------------------------------------------------
 # @var LOG_OUTPUT
@@ -966,9 +972,12 @@ stack_trace() {
     local message=""
     # Block width and character for header/footer
     local char="-"
-    # Recalculate terminal columns, max at 80
-    COLUMNS=$(tput cols)
-    local width=$(( COLUMNS > 80 ? 80 : COLUMNS ))
+
+    # Recalculate terminal columns
+    COLUMNS=$( (command -v tput >/dev/null && tput cols) || printf "80")
+    COLUMNS=$((COLUMNS > 0 ? COLUMNS : 80)) # Ensure COLUMNS is a positive number
+    local width
+    width=${COLUMNS:-80}                    # Max console width
 
     # Check if $1 is a valid level, otherwise treat it as the message
     case "$level" in
@@ -976,7 +985,6 @@ stack_trace() {
             shift
             ;;
         *)
-            # If $1 is not valid, treat it as the beginning of the message
             message="$level"
             level="INFO"
             shift
@@ -987,239 +995,227 @@ stack_trace() {
     for arg in "$@"; do
         message+="$arg "
     done
-    # Trim trailing space
-    message="${message% }"
+    # Trim leading/trailing whitespace
+    message=$(printf "%s" "$message" | xargs)
 
     # Define functions to skip
     local skip_functions=("die" "warn" "stack_trace")
     local encountered_main=0 # Track the first occurrence of main()
 
-    # Get the current function name stack_trace() in title case for the banner
+    # Generate title case function name for the banner
     local raw_function_name="${FUNCNAME[0]}"
-    local header_name
-    header_name="$(echo "$raw_function_name" | sed -E 's/_/ /g; s/\b(.)/\U\1/g; s/(\b[A-Za-z])([A-Za-z]*)/\1\L\2/g')"
-    header_name="$level $header_name"
+    local header_name header_level
+    header_name=$(printf "%s" "$raw_function_name" | sed -E 's/_/ /g; s/\b(.)/\U\1/g; s/(\b[A-Za-z])([A-Za-z]*)/\1\L\2/g')
+    header_level=$(printf "%s" "$level" | sed -E 's/\b(.)/\U\1/g; s/(\b[A-Za-z])([A-Za-z]*)/\1\L\2/g')
+    header_name="$header_level $header_name"
 
-    # -------------------------------------------------------------------------
-    # @brief Determines if a function should be skipped in the stack trace.
-    # @details Skips functions specified in the `skip_functions` list and
-    #          ignores duplicate `main()` entries.
-    #
-    # @param $1 Function name to evaluate.
-    #
-    # @return 0 if the function should be skipped, 1 otherwise.
-    #
-    # @example
-    # should_skip "main" && continue
-    # -------------------------------------------------------------------------
+    # Helper: Skip irrelevant functions
     should_skip() {
         local func="$1"
         for skip in "${skip_functions[@]}"; do
             if [[ "$func" == "$skip" ]]; then
-                return 0 # Skip this function
+                return 0
             fi
         done
-        # Skip duplicate main()
-        if [[ "$func" == "main" ]]; then
-            if (( encountered_main > 0 )); then
-                return 0 # Skip subsequent occurrences of main
-            fi
-            ((encountered_main++))
+        if [[ "$func" == "main" && $encountered_main -gt 0 ]]; then
+            return 0
         fi
-        return 1 # Do not skip
+        [[ "$func" == "main" ]] && ((encountered_main++))
+        return 1
     }
 
-    # Iterate through the stack to build the displayed stack
+    # Build the stack trace
     local displayed_stack=()
-    local longest_length=0  # Track the longest function name length
-
-    # Handle a piped script calling stack_trace from main
-    if [[ -p /dev/stdin && ${#FUNCNAME[@]} == 1 ]]; then
-        displayed_stack+=("$(printf "%s|%s" "main()" "${BASH_LINENO[0]}")")
-    fi
-
-    # Handle the rest of the stack
+    local longest_length=0
     for ((i = 1; i < ${#FUNCNAME[@]}; i++)); do
         local func="${FUNCNAME[i]}"
         local line="${BASH_LINENO[i - 1]}"
         local current_length=${#func}
 
-        # Skip ignored functions
         if should_skip "$func"; then
             continue
         elif (( current_length > longest_length )); then
             longest_length=$current_length
         fi
 
-        # Prepend the formatted stack entry to reverse the order
-        displayed_stack=("$(printf "%s|%s" \
-            "$func()" \
-            "$line")" \
-            "${displayed_stack[@]}")
+        displayed_stack=("$(printf "%s|%s" "$func()" "$line")" "${displayed_stack[@]}")
     done
 
-    # -------------------------------------------------------------------------
-    # @brief Provides a fallback for `tput` commands when errors occur.
-    # @details Returns an empty string if `tput` fails, ensuring no errors
-    #          propagate during color or formatting setup.
-    #
-    # @param $@ Command-line arguments passed directly to `tput`.
-    #
-    # @return Output of `tput` if successful, or an empty string if it fails.
-    #
-    # @example
-    # local bold=$(safe_tput bold)
-    # -------------------------------------------------------------------------
-    safe_tput() { tput "$@" 2>/dev/null || printf ""; }
-
     # General text attributes
-    local reset=$(safe_tput sgr0)
-    local bold=$(safe_tput bold)
+    local reset="\033[0m"     # Reset text formatting
+    local bold="\033[1m"      # Bold text
 
     # Foreground colors
-    local fgred=$(safe_tput setaf 1)  # Red text
-    local fggrn=$(safe_tput setaf 2)  # Green text
-    local fgylw=$(safe_tput setaf 3)  # Yellow text
-    local fgblu=$(safe_tput setaf 4)  # Blue text
-    local fgmag=$(safe_tput setaf 5)  # Magenta text
-    local fgcyn=$(safe_tput setaf 6)  # Cyan text
-    local fggld=$(safe_tput setaf 220)  # Gold text
-    [[ -z "$fggld" ]] && fggld="$fgylw"  # Fallback to yellow
+    local fgred="\033[31m"    # Red text
+    local fggrn="\033[32m"    # Green text
+    local fgylw="\033[33m"    # Yellow text
+    local fgblu="\033[34m"    # Blue text
+    local fgmag="\033[35m"    # Magenta text
+    local fgcyn="\033[36m"    # Cyan text
+    local fggld="\033[38;5;220m"  # Gold text (ANSI 256 color)
 
-    # Determine color and label based on the log level
+    # Determine color and label based on level
     local color label
     case "$level" in
-        DEBUG) color=${fgcyn}; label="[DEBUG]";;
-        INFO) color=${fggrn}; label="[INFO ]";;
-        WARN|WARNING) color=${fggld}; label="[WARN ]";;
-        ERROR) color=${fgmag}; label="[ERROR]";;
-        CRIT|CRITICAL) color=${fgred}; label="[CRIT ]";;
+        DEBUG) color=$fgcyn; label="[DEBUG]";;
+        INFO) color=$fggrn; label="[INFO ]";;
+        WARN|WARNING) color=$fggld; label="[WARN ]";;
+        ERROR) color=$fgmag; label="[ERROR]";;
+        CRIT|CRITICAL) color=$fgred; label="[CRIT ]";;
     esac
 
-    # Create header
+    # Create header and footer
     local dash_count=$(( (width - ${#header_name} - 2) / 2 ))
     local header_l header_r
     header_l="$(printf '%*s' "$dash_count" | tr ' ' "$char")"
     header_r="$header_l"
     [[ $(( (width - ${#header_name}) % 2 )) -eq 1 ]] && header_r="${header_r}${char}"
     local header=$(printf "%b%s%b %b%b%s%b %b%s%b" \
-        "${color}" \
-        "${header_l}" \
-        "${reset}" \
-        "${color}" \
-        "${bold}" \
-        "${header_name}" \
-        "${reset}" \
-        "${color}" \
-        "${header_r}" \
-        "${reset}")
-
-    # Create footer
-    local footer="$(printf '%*s' "$width" "" | tr ' ' "$char")"
-    [[ -n "$color" ]] && footer="${color}${footer}${reset}"
+        "$color" "$header_l" "$reset" "$color" "$bold" "$header_name" "$reset" "$color" "$header_r" "$reset")
+    local footer
+    footer="$(printf '%b%s%b' "$color" "$(printf '%*s' "$width" | tr ' ' "$char")" "$reset")"
 
     # Print header
     printf "%s\n" "$header"
 
     # Print the message, if provided
     if [[ -n "$message" ]]; then
+        # Fallback mechanism for wrap_messages
+        local result primary overflow secondary
+        if command -v wrap_messages >/dev/null 2>&1; then
+            result=$(wrap_messages "$width" "$message" || true)
+            primary="${result%%${delimiter}*}"
+            result="${result#*${delimiter}}"
+            overflow="${result%%${delimiter}*}"
+        else
+            primary="$message"
+        fi
         # Print the formatted message
-        printf "%b%s%b\n" "${color}" "${message}" "${reset}"
+        printf "%b%s%b\n" "${color}" "${primary}" "${reset}"
+        printf "%b%s%b\n" "${color}" "${overflow}" "${reset}"
     fi
 
-    # Calculate indent for proper alignment
+    # Print stack trace
     local indent=$(( ($width / 2) - ((longest_length + 28) / 2) ))
-
-    # Print the displayed stack in reverse order
-    for ((i = ${#displayed_stack[@]} - 1, idx = 0; i >= 0; i--, idx++)); do
-        IFS='|' read -r func line <<< "${displayed_stack[i]}"
-        printf "%b%*s [%d] Function: %-*s Line: %4s%b\n" \
-            "${color}" \
-            "$indent" \
-            ">" \
-            "$idx" \
-            "$((longest_length + 2))" \
-            "$func" \
-            "$line" \
-            "${reset}"
-    done
+    indent=$(( indent < 0 ? 0 : indent ))
+    if [[ -z "${displayed_stack[*]}" ]]; then
+        printf "%b[WARN ]%b Stack trace is empty.\n" "$fggld" "$reset" >&2
+    else
+        for ((i = ${#displayed_stack[@]} - 1, idx = 0; i >= 0; i--, idx++)); do
+            IFS='|' read -r func line <<< "${displayed_stack[i]}"
+            printf "%b%*s [%d] Function: %-*s Line: %4s%b\n" \
+                "$color" "$indent" ">" "$idx" "$((longest_length + 2))" "$func" "$line" "$reset"
+        done
+    fi
 
     # Print footer
-    printf "%b%s%b\n\n" "${color}" "$footer" "${reset}"
+    printf "%s\n\n" "$footer"
 }
 
 # -----------------------------------------------------------------------------
-# @brief Logs a warning message with optional additional details and
-#        formatting.
-# @details This function outputs a formatted warning message with color and
-#          positional information (script name, function, and line number).
-#          If additional details are provided, they are included in the
-#          message. The function also supports including an error code and
-#          handling stack traces if enabled.
+# @brief Logs a warning message with optional details and stack trace.
+# @details This function logs a warning message with color-coded formatting
+#          and optional details. It adjusts the output to fit within the
+#          terminal's width and supports message wrapping if the
+#          `wrap_messages` function is available. If `WARN_STACK_TRACE` is set
+#          to `true`, a stack trace is also logged.
 #
-# @param $1 [optional] The primary message to log. Defaults to "A warning was
-#                      raised on this line" if not provided.
-# @param $@ [optional] Additional details to include in the warning message.
+# @param $1 [Optional] The primary warning message. Defaults to
+#                      "A warning was raised on this line" if not provided.
+# @param $@ [Optional] Additional details to include in the warning message.
+#
+# @global FALLBACK_SCRIPT_NAME The name of the script to use if the script
+#                              name cannot be determined.
+# @global FUNCNAME             Bash array containing the function call stack.
+# @global BASH_LINENO          Bash array containing the line numbers of
+#                              function calls in the stack.
+# @global WRAP_DELIMITER       The delimiter used for separating wrapped
+#                              message parts.
+# @global WARN_STACK_TRACE     If set to `true`, a stack trace will be logged.
+# @global COLUMNS              The terminal's column width, used to format
+#                              the output.
 #
 # @return None.
 #
 # @example
-# warn "File not found" "Please check the file path."
+# warn "Configuration file missing." "Please check /etc/config."
+# warn "Invalid syntax in the configuration file."
+#
+# @note This function requires `tput` for terminal width detection and ANSI
+#       formatting, with fallbacks for minimal environments.
 # -----------------------------------------------------------------------------
 warn() {
     # Initialize variables
-    local script="${FALLBACK_SCRIPT_NAME:-unknown}" # This script's name
-    local func_name="${FUNCNAME[1]:-main}" # Calling function
-    local caller_line=${BASH_LINENO[0]:-0} # Calling line
-    local error_code=""                    # Error code, default blank
-    local message=""                       # Primary message
-    local details=""                       # Additional details
-    local delimiter="␞"                    # Delimiter for wrapped parts
+    local script="${FALLBACK_SCRIPT_NAME:-unknown}"  # This script's name
+    local func_name="${FUNCNAME[1]:-main}"          # Calling function
+    local caller_line=${BASH_LINENO[0]:-0}          # Calling line
+
+    # Get valid error code
+    local error_code
+    if [[ -n "${1:-}" && "$1" =~ ^[0-9]+$ ]]; then
+        error_code=$((10#$1))  # Convert to numeric
+        shift
+    else
+        error_code=1  # Default to 1 if not numeric
+    fi
+
+    # Configurable delimiter
+    local delimiter="${WRAP_DELIMITER:-␞}"
+
+    # Get the primary message
+    local message
+    message=$(sed -E 's/^[[:space:]]*//;s/[[:space:]]*$//' <<< "${1:-A warning was raised on this line}")
+    [[ $# -gt 0 ]] && shift
+
+    # Process details
+    local details
+    details=$(sed -E 's/^[[:space:]]*//;s/[[:space:]]*$//' <<< "$*")
+
     # Recalculate terminal columns
-    COLUMNS=$(tput cols); local width=${COLUMNS:-80}  # Max console width
+    COLUMNS=$( (command -v tput >/dev/null && tput cols) || printf "80")
+    COLUMNS=$((COLUMNS > 0 ? COLUMNS : 80)) # Ensure COLUMNS is a positive number
+    local width
+    width=${COLUMNS:-80}                    # Max console width
 
-    # Fallback for `tput` commands
-    safe_tput() { tput "$@" 2>/dev/null || printf ""; }
-
-    # General text attributes
-    local reset=$(safe_tput sgr0)
-    local bold=$(safe_tput bold)
-
-    # Foreground colors
-    local fggld=$(safe_tput setaf 220)  # Gold text
-    local fgcyn=$(safe_tput setaf 6)   # Cyan text
-    local fgblu=$(safe_tput setaf 4)   # Blue text
-    [[ -z "$fggld" ]] && fggld=$(safe_tput setaf 3)  # Fallback to yellow
+    # Escape sequences for colors and attributes
+    local reset="\033[0m"           # Reset text
+    local bold="\033[1m"            # Bold text
+    local fggld="\033[38;5;220m"    # Gold text
+    local fgcyn="\033[36m"          # Cyan text
+    local fgblu="\033[34m"          # Blue text
 
     # Format prefix
     format_prefix() {
-        local color=$1
-        local label=$2
-        printf "%b%s%b %b[%s:%s:%s]%b " \
-            "${bold}${color}" "$label" "${reset}" \
-            "${bold}" "$script" "$func_name" "$caller_line" "${reset}"
+        local color=${1:-"\033[0m"}
+        local label="${2:-'[WARN ] [unknown:main:0]'}"
+        # Create prefix
+        printf "%b%b%s%b %b[%s:%s:%s]%b " \
+            "${bold}" \
+            "${color}" \
+            "${label}" \
+            "${reset}" \
+            "${bold}" \
+            "${script}" \
+            "${func_name}" \
+            "${caller_line}" \
+            "${reset}"
     }
 
     # Generate prefixes
-    local warn_prefix=$(format_prefix "$fggld" "[WARN ]")
-    local extd_prefix=$(format_prefix "$fgcyn" "[EXTND]")
-    local dets_prefix=$(format_prefix "$fgblu" "[DETLS]")
+    local warn_prefix extd_prefix dets_prefix
+    warn_prefix=$(format_prefix "$fggld" "[WARN ]")
+    extd_prefix=$(format_prefix "$fgcyn" "[EXTND]")
+    dets_prefix=$(format_prefix "$fgblu" "[DETLS]")
 
-    # Process primary message
-    message=$(printf "%s" "${1:-A warning was raised on this line}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-    shift
-
-    # Process additional details
-    details="${1:-}"
-    shift
-    for arg in "$@"; do
-        details+=" $arg"
-    done
+    # Strip ANSI escape sequences for length calculation
+    local plain_warn_prefix adjusted_width
+    plain_warn_prefix=$(printf "%s" "$warn_prefix" | sed -E 's/(\x1b\[[0-9;]*[a-zA-Z]|\x1b\([a-zA-Z])//g; s/^[[:space:]]*//; s/[[:space:]]*$//')
+    adjusted_width=$((width - ${#plain_warn_prefix} - 1))
 
     # Fallback mechanism for `wrap_messages`
     local result primary overflow secondary
     if command -v wrap_messages >/dev/null 2>&1; then
-        result=$(wrap_messages "$width" "$message" "$details")
+        result=$(wrap_messages "$adjusted_width" "$message" "$details" || true)
         primary="${result%%${delimiter}*}"
         result="${result#*${delimiter}}"
         overflow="${result%%${delimiter}*}"
@@ -1245,6 +1241,11 @@ warn() {
         while IFS= read -r line; do
             printf "%s%s\n" "$dets_prefix" "$line" >&2
         done <<< "$secondary"
+    fi
+
+    # Execute stack trace if WARN_STACK_TRACE is enabled
+    if [[ "${WARN_STACK_TRACE:-false}" == "true" ]]; then
+        stack_trace "WARNING" "${message}" "${secondary}"
     fi
 }
 
@@ -1306,9 +1307,10 @@ die() {
     details=$(sed -E 's/^[[:space:]]*//;s/[[:space:]]*$//' <<< "$*")
 
     # Recalculate terminal columns
+    COLUMNS=$( (command -v tput >/dev/null && tput cols) || printf "80")
+    COLUMNS=$((COLUMNS > 0 ? COLUMNS : 80)) # Ensure COLUMNS is a positive number
     local width
-    COLUMNS=$(tput cols 2>/dev/null || echo 80) # Fallback to 80 on failure
-    width=${COLUMNS:-80}                        # Max console width
+    width=${COLUMNS:-80}                    # Max console width
 
     # Escape sequences as safe(r) alternatives to global tput values
     # General attributes
@@ -1377,6 +1379,9 @@ die() {
             printf "%s%s\n" "$dets_prefix" "$line" >&2
         done <<< "$secondary"
     fi
+
+    # Execute stack trace
+    stack_trace "CRITICAL" "${message}" "${secondary}"
 
     # Exit with the specified error code
     exit "$error_code"
@@ -2292,12 +2297,13 @@ check_release() {
 check_arch() {
     local debug; debug=$(debug_start "$@"); eval set -- "$(debug_filter "$@")"
 
-    local detected_model is_supported key full_name model chip this_model this_chip
+    local detected_model key full_name model chip this_model this_chip
+    local is_supported=false
 
-    # Check if SUPPORTED_MODELS is set to "*" to allow all models
-    if [[ "${SUPPORTED_MODELS}" == "all" ]]; then
+    # Safely check if SUPPORTED_MODELS is set and if it allows all models
+    if [[ "${SUPPORTED_MODELS[all]-}" == "Supported" ]]; then
         is_supported=true
-        debug_print "All models are allowed, SUPPORTED_MODELS is set to 'aLL'" "$debug"
+        debug_print "All models are allowed, SUPPORTED_MODELS is set to 'all'" "$debug"
         debug_end "$debug"
         return 0
     fi
@@ -2314,9 +2320,6 @@ check_arch() {
         die 1 "No Raspberry Pi model found in /proc/device-tree/compatible. This system may not be supported."
     fi
     debug_print "Detected model: $detected_model" "$debug"
-
-    # Initialize is_supported flag
-    is_supported=false
 
     # Iterate through supported models to check compatibility
     for key in "${!SUPPORTED_MODELS[@]}"; do
@@ -2662,7 +2665,7 @@ pad_with_spaces() {
 wrap_messages() {
     local line_width=$1
     local primary=$2
-    local secondary=$3
+    local secondary=${3:-}
     local delimiter="␞"
 
     # Validate input
@@ -2708,7 +2711,7 @@ wrap_messages() {
     fi
 
     # Process secondary message
-    if [[ ${#secondary} -gt $line_width ]]; then
+    if [[ -n ${#secondary} && ${#secondary} -gt $line_width ]]; then
         secondary=$(wrap_message "$secondary" "$line_width")
     fi
 
